@@ -2,7 +2,9 @@
 LinkedIn Post Generator - FastAPI Backend
 Main application entry point
 """
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+import time
+from fastapi import FastAPI, Request, UploadFile, File, Form, HTTPException
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from typing import Optional, List
@@ -12,9 +14,13 @@ from dotenv import load_dotenv
 from services.claude_service import ClaudeService
 from services.input_processor import InputProcessor
 from agents.content_agent import ContentGenerationAgent
+from utils.exceptions import InvalidFileError, RateLimitError, ServiceUnavailableError
+from utils.logger import get_logger
 
 # Load environment variables
 load_dotenv()
+
+logger = get_logger(__name__)
 
 app = FastAPI(
     title="LinkedIn Post Generator API",
@@ -22,10 +28,16 @@ app = FastAPI(
     version="0.1.0"
 )
 
-# CORS configuration for local development
+# CORS — FRONTEND_URL is a comma-separated list so both the Vercel production
+# domain and localhost can be allowed simultaneously without wildcards.
+_allowed_origins = [
+    url.strip()
+    for url in os.getenv("FRONTEND_URL", "http://localhost:3000").split(",")
+    if url.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[os.getenv("FRONTEND_URL", "http://localhost:3000")],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -36,6 +48,39 @@ claude_service = ClaudeService(api_key=os.getenv("ANTHROPIC_API_KEY"))
 input_processor = InputProcessor()
 content_agent = ContentGenerationAgent(claude_service)
 
+
+# ---------------------------------------------------------------------------
+# Centralised error response helpers
+# ---------------------------------------------------------------------------
+
+def _error_response(status_code: int, code: str, message: str, retry_after: int = None) -> JSONResponse:
+    body = {"success": False, "error": {"code": code, "message": message}}
+    if retry_after is not None:
+        body["error"]["retryAfter"] = retry_after
+    return JSONResponse(status_code=status_code, content=body)
+
+
+# ---------------------------------------------------------------------------
+# Exception handlers
+# ---------------------------------------------------------------------------
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+    code_map = {400: "BAD_REQUEST", 401: "UNAUTHORIZED", 403: "FORBIDDEN",
+                404: "NOT_FOUND", 422: "VALIDATION_ERROR", 500: "INTERNAL_ERROR",
+                503: "SERVICE_UNAVAILABLE"}
+    code = code_map.get(exc.status_code, "ERROR")
+    return _error_response(exc.status_code, code, exc.detail)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    return _error_response(422, "VALIDATION_ERROR", str(exc))
+
+
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
 
 @app.get("/")
 async def root():
@@ -51,7 +96,6 @@ async def root():
 async def health_check():
     """Detailed health check with API connectivity"""
     try:
-        # Test Claude API connectivity
         api_status = await claude_service.test_connection()
         return {
             "status": "healthy",
@@ -72,22 +116,10 @@ async def generate_post(
     url_input: Optional[str] = Form(default=None),
 ):
     """
-    Generate optimized LinkedIn post from multiple input sources
-
-    Args:
-        text_input: Plain text content
-        pdf_file: PDF document upload
-        image_files: Image files (JPG, PNG)
-        url_input: URL for content extraction
-
-    Returns:
-        Generated LinkedIn post with engagement optimization
+    Generate optimized LinkedIn post from multiple input sources.
     """
+    start_time = time.monotonic()
     try:
-        # Log incoming request
-        print(f"Received request - text: {bool(text_input and text_input.strip())}, pdf: {bool(pdf_file)}, images: {len(image_files)}, url: {bool(url_input and url_input.strip())}")
-
-        # Validate at least one input provided (handle empty strings)
         has_text = text_input and text_input.strip()
         has_url = url_input and url_input.strip()
 
@@ -97,7 +129,6 @@ async def generate_post(
                 detail="At least one input source required (text, PDF, image, or URL)"
             )
 
-        # Process all inputs
         processed_inputs = await input_processor.process_inputs(
             text=text_input,
             pdf=pdf_file,
@@ -105,18 +136,32 @@ async def generate_post(
             url=url_input
         )
 
-        print(f"Processed {len(processed_inputs)} inputs")
+        # Generate 3 variants (Story 2.1)
+        variants = await content_agent.generate_variants(processed_inputs)
 
-        # Generate LinkedIn post using content agent
-        result = await content_agent.generate_post(processed_inputs)
+        elapsed_ms = int((time.monotonic() - start_time) * 1000)
+        logger.info(
+            "POST /api/generate - inputs: %d, time: %dms, variants: %d",
+            len(processed_inputs),
+            elapsed_ms,
+            len(variants),
+        )
+
+        # Get first variant for backward compatibility (single-variant consumers)
+        first_variant = variants[0] if variants else {}
 
         return {
             "success": True,
-            "post": result["post_text"],
-            "hashtags": result["hashtags"],
-            "engagement_score": result["engagement_score"],
-            "hook_strength": result["hook_strength"],
-            "suggestions": result["suggestions"],
+            # Backward compatibility: top-level fields from first variant
+            "post": first_variant.get("post", ""),
+            "hashtags": first_variant.get("hashtags", []),
+            "engagement_score": first_variant.get("engagement_score", 0),
+            "hook_strength": first_variant.get("hook_strength", ""),
+            "suggestions": first_variant.get("suggestions", []),
+            "cta": first_variant.get("cta", ""),
+            "image_alt_text": first_variant.get("image_alt_text", ""),
+            # Story 2.1: new variants array
+            "variants": variants,
             "metadata": {
                 "inputs_processed": len(processed_inputs),
                 "primary_source": processed_inputs[0]["type"] if processed_inputs else None
@@ -125,10 +170,25 @@ async def generate_post(
 
     except HTTPException:
         raise
+    except InvalidFileError as e:
+        elapsed_ms = int((time.monotonic() - start_time) * 1000)
+        logger.error("Invalid file in generate request (%dms): %s", elapsed_ms, str(e), exc_info=True)
+        return _error_response(400, "INVALID_FILE", str(e))
+    except RateLimitError as e:
+        elapsed_ms = int((time.monotonic() - start_time) * 1000)
+        logger.error("Rate limit in generate request (%dms): %s", elapsed_ms, str(e), exc_info=True)
+        return _error_response(
+            503, "RATE_LIMIT_EXCEEDED",
+            "Claude API rate limit reached. Please try again in 60 seconds.",
+            retry_after=e.retry_after,
+        )
+    except ServiceUnavailableError as e:
+        elapsed_ms = int((time.monotonic() - start_time) * 1000)
+        logger.error("Service unavailable in generate request (%dms): %s", elapsed_ms, str(e), exc_info=True)
+        return _error_response(503, "SERVICE_UNAVAILABLE", str(e))
     except Exception as e:
-        print(f"Error in generate_post: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        elapsed_ms = int((time.monotonic() - start_time) * 1000)
+        logger.error("Unhandled error in generate request (%dms): %s", elapsed_ms, str(e), exc_info=True)
         raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
 
 
@@ -136,28 +196,65 @@ async def generate_post(
 async def refine_post(
     post_text: str = Form(...),
     feedback: str = Form(...),
+    variant_id: Optional[str] = Form(default=None),
+    personality: Optional[str] = Form(default=None),
+    label: Optional[str] = Form(default=None),
 ):
     """
-    Refine existing post based on conversational feedback
-
-    Args:
-        post_text: Current post text
-        feedback: User feedback (e.g., "make it punchier", "add a question")
-
-    Returns:
-        Refined post with improvements
+    Refine existing post based on conversational feedback.
+    Supports variant-specific refinement (Story 2.1 AC3).
     """
+    start_time = time.monotonic()
     try:
-        refined_result = await content_agent.refine_post(post_text, feedback)
+        # If personality provided, use variant-specific refinement (Story 2.1)
+        if personality:
+            refined_result = await content_agent.refine_variant(
+                post_text, feedback, personality, label
+            )
+        else:
+            refined_result = await content_agent.refine_post(post_text, feedback)
 
-        return {
+        elapsed_ms = int((time.monotonic() - start_time) * 1000)
+        logger.info(
+            "POST /api/refine - time: %dms, score: %s, personality: %s",
+            elapsed_ms,
+            refined_result.get("engagement_score", "n/a"),
+            refined_result.get("personality", "default"),
+        )
+
+        response = {
             "success": True,
             "refined_post": refined_result["post_text"],
-            "changes_made": refined_result["changes"],
-            "engagement_score": refined_result["engagement_score"]
+            "changes_made": refined_result.get("changes", []),
+            "engagement_score": refined_result["engagement_score"],
+            "hook_strength": refined_result.get("hook_strength", ""),
+            "hashtags": refined_result.get("hashtags", []),
+            "suggestions": refined_result.get("suggestions", []),
+            "cta": refined_result.get("cta", ""),
         }
 
+        # Story 2.1 AC3: preserve personality and label
+        if personality:
+            response["personality"] = refined_result.get("personality", personality)
+            response["label"] = refined_result.get("label", label)
+
+        return response
+
+    except RateLimitError as e:
+        elapsed_ms = int((time.monotonic() - start_time) * 1000)
+        logger.error("Rate limit in refine request (%dms): %s", elapsed_ms, str(e), exc_info=True)
+        return _error_response(
+            503, "RATE_LIMIT_EXCEEDED",
+            "Claude API rate limit reached. Please try again in 60 seconds.",
+            retry_after=e.retry_after,
+        )
+    except ServiceUnavailableError as e:
+        elapsed_ms = int((time.monotonic() - start_time) * 1000)
+        logger.error("Service unavailable in refine request (%dms): %s", elapsed_ms, str(e), exc_info=True)
+        return _error_response(503, "SERVICE_UNAVAILABLE", str(e))
     except Exception as e:
+        elapsed_ms = int((time.monotonic() - start_time) * 1000)
+        logger.error("Unhandled error in refine request (%dms): %s", elapsed_ms, str(e), exc_info=True)
         raise HTTPException(status_code=500, detail=f"Refinement failed: {str(e)}")
 
 
