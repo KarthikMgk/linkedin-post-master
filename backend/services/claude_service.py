@@ -5,6 +5,11 @@ Handles all interactions with Anthropic's Claude API
 import anthropic
 from typing import Dict, List, Optional
 
+from utils.exceptions import RateLimitError, ServiceUnavailableError
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 class ClaudeService:
     """Service for interacting with Claude API"""
@@ -30,7 +35,6 @@ class ClaudeService:
             True if connection successful, False otherwise
         """
         try:
-            # Simple test message
             response = self.client.messages.create(
                 model=self.model,
                 max_tokens=10,
@@ -38,7 +42,7 @@ class ClaudeService:
             )
             return response.content is not None
         except Exception as e:
-            print(f"Claude API connection test failed: {e}")
+            logger.error("Claude API connection test failed: %s", str(e))
             return False
 
     async def generate_content(
@@ -68,11 +72,18 @@ class ClaudeService:
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_message}]
             )
-
-            # Extract text from response
             return response.content[0].text if response.content else ""
 
+        except anthropic.RateLimitError as e:
+            logger.error("Claude API rate limit exceeded: %s", str(e), exc_info=True)
+            raise RateLimitError()
+
+        except (anthropic.APIConnectionError, anthropic.APITimeoutError) as e:
+            logger.error("Claude API unavailable: %s", str(e), exc_info=True)
+            raise ServiceUnavailableError(f"Claude API unavailable: {str(e)}")
+
         except Exception as e:
+            logger.error("Claude API call failed: %s", str(e), exc_info=True)
             raise Exception(f"Claude API call failed: {str(e)}")
 
     async def generate_with_conversation(
@@ -102,8 +113,16 @@ class ClaudeService:
                 system=system_prompt,
                 messages=conversation_history
             )
-
             return response.content[0].text if response.content else ""
 
+        except anthropic.RateLimitError as e:
+            logger.error("Claude API rate limit exceeded: %s", str(e), exc_info=True)
+            raise RateLimitError()
+
+        except (anthropic.APIConnectionError, anthropic.APITimeoutError) as e:
+            logger.error("Claude API unavailable: %s", str(e), exc_info=True)
+            raise ServiceUnavailableError(f"Claude API unavailable: {str(e)}")
+
         except Exception as e:
+            logger.error("Claude conversation API call failed: %s", str(e), exc_info=True)
             raise Exception(f"Claude conversation API call failed: {str(e)}")
