@@ -1,7 +1,7 @@
 """
 Unit tests for ContentGenerationAgent.
 
-All MiniMax API calls are mocked via AsyncMock on a mock MiniMaxService instance.
+All Claude API calls are mocked via AsyncMock on a mock ClaudeService instance.
 Tests validate JSON parsing, fallback behavior, and method delegation.
 """
 import json

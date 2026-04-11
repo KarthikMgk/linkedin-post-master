@@ -2,7 +2,7 @@
 Pytest configuration and shared fixtures for the LinkedIn Post Generator backend tests.
 
 Sets up environment variables BEFORE importing the app to prevent
-MiniMaxService from failing due to missing ANTHROPIC_API_KEY.
+ClaudeService from failing due to missing ANTHROPIC_API_KEY.
 """
 import os
 import sys
@@ -14,6 +14,7 @@ os.environ.setdefault("FRONTEND_URL", "http://localhost:3000")
 # Add backend root to sys.path so imports like `from main import app` work
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import copy
 import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, MagicMock
@@ -106,14 +107,15 @@ def client():
 
 @pytest.fixture
 def mock_gen_result():
-    return MOCK_GENERATION_RESULT.copy()
+    # deepcopy so nested lists (hashtags, suggestions) are not shared between tests (P-15)
+    return copy.deepcopy(MOCK_GENERATION_RESULT)
 
 
 @pytest.fixture
 def mock_variants_result():
-    return MOCK_VARIANTS_RESULT.copy()
+    return copy.deepcopy(MOCK_VARIANTS_RESULT)
 
 
 @pytest.fixture
 def mock_refine_result():
-    return MOCK_REFINE_RESULT.copy()
+    return copy.deepcopy(MOCK_REFINE_RESULT)

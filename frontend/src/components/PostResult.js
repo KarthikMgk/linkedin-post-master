@@ -19,8 +19,12 @@ function PostResult({ result, onReset }) {
   const [toastMessage, setToastMessage] = useState('Post copied! Ready to paste in LinkedIn');
   const [isUpdating, setIsUpdating] = useState(false);
 
-  const currentPost = variants[selectedIndex];
-  const charCount = currentPost.post ? currentPost.post.length : 0;
+  const currentPost = variants[selectedIndex] || {};
+  // P-7: guard against missing/non-string post field to prevent split() crash
+  const post = typeof currentPost.post === 'string' ? currentPost.post : '';
+  // Guard against missing/non-array hashtags to prevent map() crash
+  const hashtags = Array.isArray(currentPost.hashtags) ? currentPost.hashtags : [];
+  const charCount = post.length;
   const isOverLimit = charCount > LINKEDIN_CHAR_LIMIT;
 
   const handleSelectVariant = (index) => {
@@ -41,39 +45,37 @@ function PostResult({ result, onReset }) {
 
     try {
       const refined = await apiService.refinePost({
-        postText: currentPost.post,
+        postText: post,
         feedback: refinementFeedback,
         variantId: currentPost.id,
         personality: currentPost.personality,
         label: currentPost.label,
       });
 
+      // P-11: apply state update synchronously (no nested timeouts), single delay for animation
       setIsUpdating(true);
-
-      setTimeout(() => {
-        setVariants((prev) => {
-          const updated = [...prev];
-          updated[selectedIndex] = {
-            ...updated[selectedIndex],
-            post: refined.refined_post,
-            engagement_score: refined.engagement_score,
-            hook_strength: refined.hook_strength || updated[selectedIndex].hook_strength,
-            hashtags: refined.hashtags && refined.hashtags.length > 0
-              ? refined.hashtags
-              : updated[selectedIndex].hashtags,
-            suggestions: refined.suggestions && refined.suggestions.length > 0
-              ? refined.suggestions
-              : updated[selectedIndex].suggestions,
-            cta: refined.cta || updated[selectedIndex].cta,
-            image_alt_text: refined.image_alt_text !== undefined
-              ? refined.image_alt_text
-              : updated[selectedIndex].image_alt_text,
-          };
-          return updated;
-        });
-
-        setTimeout(() => setIsUpdating(false), 50);
-      }, 300);
+      setVariants((prev) => {
+        const updated = [...prev];
+        updated[selectedIndex] = {
+          ...updated[selectedIndex],
+          // P-8: guard all refinement fields — fall back to existing value if missing
+          post: refined.refined_post ?? updated[selectedIndex].post,
+          engagement_score: refined.engagement_score ?? updated[selectedIndex].engagement_score,
+          hook_strength: refined.hook_strength || updated[selectedIndex].hook_strength,
+          hashtags: Array.isArray(refined.hashtags) && refined.hashtags.length > 0
+            ? refined.hashtags
+            : updated[selectedIndex].hashtags,
+          suggestions: Array.isArray(refined.suggestions) && refined.suggestions.length > 0
+            ? refined.suggestions
+            : updated[selectedIndex].suggestions,
+          cta: refined.cta || updated[selectedIndex].cta,
+          image_alt_text: refined.image_alt_text !== undefined
+            ? refined.image_alt_text
+            : updated[selectedIndex].image_alt_text,
+        };
+        return updated;
+      });
+      setTimeout(() => setIsUpdating(false), 300);
 
       setRefinementFeedback('');
       setToastMessage('Post refined successfully!');
@@ -81,19 +83,29 @@ function PostResult({ result, onReset }) {
       setTimeout(() => setShowCopyToast(false), 3000);
     } catch (err) {
       setError(err.message || 'Failed to refine post');
-      setIsUpdating(false);
     } finally {
       setIsRefining(false);
     }
   };
 
   const copyToClipboard = () => {
-    const fullPost = `${currentPost.post}\n\n${currentPost.hashtags.map(tag => `#${tag}`).join(' ')}`;
-    navigator.clipboard.writeText(fullPost)?.catch(() => {});
-
-    setToastMessage('Post copied! Ready to paste in LinkedIn');
-    setShowCopyToast(true);
-    setTimeout(() => setShowCopyToast(false), 3000);
+    // P-7/P-10: use safe local variables; surface clipboard failure to user.
+    // Optimistic update: show success toast immediately, correct it only if clipboard rejects.
+    const fullPost = `${post}\n\n${hashtags.map(tag => `#${tag}`).join(' ')}`;
+    if (navigator.clipboard) {
+      // Optimistic success toast — corrected to failure message if clipboard rejects.
+      // ?.catch() guards against environments where writeText returns undefined.
+      setToastMessage('Post copied! Ready to paste in LinkedIn');
+      setShowCopyToast(true);
+      setTimeout(() => setShowCopyToast(false), 3000);
+      navigator.clipboard.writeText(fullPost)?.catch(() => {
+        setToastMessage('Copy failed — please copy manually.');
+      });
+    } else {
+      setToastMessage('Copy failed — please copy manually.');
+      setShowCopyToast(true);
+      setTimeout(() => setShowCopyToast(false), 3000);
+    }
   };
 
   const getScoreColor = (score) => {
@@ -176,10 +188,10 @@ function PostResult({ result, onReset }) {
         <div className={`post-content ${isUpdating ? 'updating' : ''}`}>
           <label className="section-label">Post Text:</label>
           <div className="post-text">
-            {currentPost.post.split('\n').map((line, index) => (
+            {post.split('\n').map((line, index) => (
               <React.Fragment key={index}>
                 {line}
-                {index < currentPost.post.split('\n').length - 1 && <br />}
+                {index < post.split('\n').length - 1 && <br />}
               </React.Fragment>
             ))}
           </div>
@@ -196,10 +208,10 @@ function PostResult({ result, onReset }) {
         {/* Hashtags */}
         <div className={`hashtags-section ${isUpdating ? 'updating' : ''}`}>
           <label className="section-label">
-            Hashtags: <span className="hashtag-count">({currentPost.hashtags.length} — recommended 3–5)</span>
+            Hashtags: <span className="hashtag-count">({hashtags.length} — recommended 3–5)</span>
           </label>
           <div className="hashtags">
-            {currentPost.hashtags.map((tag, index) => (
+            {hashtags.map((tag, index) => (
               <span key={index} className="hashtag">#{tag}</span>
             ))}
           </div>

@@ -17,9 +17,9 @@ jest.mock('../../services/apiService', () => ({
 
 import apiService from '../../services/apiService';
 
-// Mock clipboard
+// Mock clipboard — mockResolvedValue so .then() chains in copyToClipboard work correctly
 Object.assign(navigator, {
-  clipboard: { writeText: jest.fn() },
+  clipboard: { writeText: jest.fn().mockResolvedValue(undefined) },
 });
 
 const MOCK_RESULT = {

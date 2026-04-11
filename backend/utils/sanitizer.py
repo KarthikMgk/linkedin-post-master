@@ -4,8 +4,8 @@ Strips common injection vectors before content reaches the Claude API system pro
 """
 import re
 
-# Remove <script> ... </script> blocks (including nested content)
-_SCRIPT_RE = re.compile(r"<script[^>]*>.*?</script>", re.IGNORECASE | re.DOTALL)
+# Remove <script> ... </script> blocks — handles optional whitespace inside tag (P-20)
+_SCRIPT_RE = re.compile(r"<\s*script[^>]*>.*?<\s*/\s*script\s*>", re.IGNORECASE | re.DOTALL)
 
 # Remove all remaining HTML/XML tags
 _HTML_TAG_RE = re.compile(r"<[^>]+>")

@@ -279,10 +279,10 @@ Now generate all three variants from the provided content."""
             result = json.loads(cleaned_response)
             variants = result.get("variants", [])
 
-            # Add unique IDs if not present
+            # Add unique IDs if not present — use full UUID to avoid collisions (P-16)
             for variant in variants:
                 if "id" not in variant:
-                    variant["id"] = str(uuid.uuid4())[:8]
+                    variant["id"] = str(uuid.uuid4())
                 # Normalize personality field
                 if "personality" not in variant:
                     variant["personality"] = "unknown"
@@ -320,7 +320,7 @@ Now generate all three variants from the provided content."""
         variants = []
         for i, p in enumerate(personalities):
             variants.append({
-                "id": str(uuid.uuid4())[:8],
+                "id": str(uuid.uuid4()),
                 "personality": p["personality"],
                 "label": p["label"],
                 "post": raw_response.replace("\\n", "\n").strip()[:2000],

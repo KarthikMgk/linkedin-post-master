@@ -90,18 +90,39 @@ class InputProcessor:
 
         return processed
 
+    # P-4: max file sizes enforced before reading into memory
+    _MAX_PDF_BYTES = 10 * 1024 * 1024   # 10 MB
+    _MAX_IMAGE_BYTES = 5 * 1024 * 1024  # 5 MB
+
+    # P-17: allowed MIME types
+    _ALLOWED_PDF_TYPES = {"application/pdf"}
+    _ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif"}
+
     async def _extract_pdf_text(self, pdf_file: UploadFile) -> str:
         """
         Extract text content from PDF.
 
         Raises:
-            InvalidFileError: If the PDF cannot be read or parsed.
+            InvalidFileError: If the PDF cannot be read, parsed, or exceeds size/type limits.
 
         Returns:
             Extracted text content.
         """
         try:
+            # P-17: validate MIME type when content_type is explicitly provided as a string
+            if isinstance(pdf_file.content_type, str) and pdf_file.content_type not in self._ALLOWED_PDF_TYPES:
+                raise InvalidFileError(
+                    f"Unsupported file type '{pdf_file.content_type}'. Only PDF files are accepted."
+                )
+
             content = await pdf_file.read()
+
+            # P-4: enforce file size limit after read (UploadFile.size is not always populated)
+            if len(content) > self._MAX_PDF_BYTES:
+                raise InvalidFileError(
+                    f"PDF file exceeds the 10 MB limit ({len(content) // (1024*1024)} MB uploaded)."
+                )
+
             pdf_reader = PyPDF2.PdfReader(io.BytesIO(content))
 
             text_parts = []
@@ -126,7 +147,24 @@ class InputProcessor:
             Extracted text content, or empty string on failure (silently skipped).
         """
         try:
+            # P-17: validate MIME type when content_type is explicitly provided as a string
+            if isinstance(image_file.content_type, str) and image_file.content_type not in self._ALLOWED_IMAGE_TYPES:
+                logger.warning(
+                    "Image OCR skipped: unsupported type '%s' for file '%s'",
+                    image_file.content_type,
+                    image_file.filename,
+                )
+                return ""
+
             content = await image_file.read()
+
+            # P-4: enforce file size limit
+            if len(content) > self._MAX_IMAGE_BYTES:
+                logger.warning(
+                    "Image OCR skipped: file '%s' exceeds 5 MB limit",
+                    image_file.filename,
+                )
+                return ""
             image = Image.open(io.BytesIO(content))
 
             # Run blocking OCR in thread pool to avoid blocking the event loop

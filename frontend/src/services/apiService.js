@@ -2,7 +2,11 @@ import axios from 'axios';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
-/** 90 s client-side timeout — 3-variant generation with Sonnet 4.6 can take 60–80 s */
+/**
+ * 90 s client-side timeout — 3-variant generation with Sonnet 4.6 can take 60–80 s.
+ * Story 1.4 AC5 originally specified 35 s (written for single-variant). Amended to 90 s
+ * when Story 2.1 introduced multi-variant generation (IG-1 resolution).
+ */
 export const GENERATION_TIMEOUT_MS = 90000;
 
 const apiClient = axios.create({ baseURL: API_BASE_URL });

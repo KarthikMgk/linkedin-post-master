@@ -30,16 +30,17 @@ app = FastAPI(
 
 # CORS — FRONTEND_URL is a comma-separated list so both the Vercel production
 # domain and localhost can be allowed simultaneously without wildcards.
+# P-6: fall back to localhost if env var is unset or empty.
 _allowed_origins = [
     url.strip()
-    for url in os.getenv("FRONTEND_URL", "http://localhost:3000").split(",")
+    for url in os.getenv("FRONTEND_URL", "").split(",")
     if url.strip()
-]
+] or ["http://localhost:3000"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -144,16 +145,19 @@ async def generate_post(
         # Generate 3 variants (Story 2.1)
         variants = await content_agent.generate_variants(processed_inputs)
 
-        elapsed_ms = int((time.monotonic() - start_time) * 1000)
-        logger.info(
-            "POST /api/generate - inputs: %d, time: %dms, variants: %d",
-            len(processed_inputs),
-            elapsed_ms,
-            len(variants),
-        )
+        if not variants:
+            raise HTTPException(status_code=500, detail="Content generation returned no variants")
 
         # Get first variant for backward compatibility (single-variant consumers)
-        first_variant = variants[0] if variants else {}
+        first_variant = variants[0]
+
+        elapsed_ms = int((time.monotonic() - start_time) * 1000)
+        logger.info(
+            "POST /api/generate - inputs: %d, time: %dms, score: %s",
+            len(processed_inputs),
+            elapsed_ms,
+            first_variant.get("engagement_score", "n/a"),
+        )
 
         return {
             "success": True,
@@ -209,6 +213,14 @@ async def refine_post(
     Refine existing post based on conversational feedback.
     Supports variant-specific refinement (Story 2.1 AC3).
     """
+    # P-14: validate personality against allowed values
+    _VALID_PERSONALITIES = {"bold", "structured", "provocative"}
+    if personality and personality not in _VALID_PERSONALITIES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid personality '{personality}'. Must be one of: {', '.join(sorted(_VALID_PERSONALITIES))}."
+        )
+
     start_time = time.monotonic()
     try:
         # If personality provided, use variant-specific refinement (Story 2.1)

@@ -30,6 +30,9 @@ def test_generate_success_with_text_input(client, mock_variants_result):
     assert "engagement_score" in data
     assert "hook_strength" in data
     assert "suggestions" in data
+    # P-18: verify exactly 3 variants returned (Story 2.1 AC1)
+    assert "variants" in data
+    assert len(data["variants"]) == 3
 
 
 def test_generate_response_maps_fields_correctly(client, mock_variants_result):

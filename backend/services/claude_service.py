@@ -84,7 +84,9 @@ class ClaudeService:
 
         except anthropic.RateLimitError as e:
             logger.error("Claude API rate limit exceeded: %s", str(e), exc_info=True)
-            raise RateLimitError()
+            headers = getattr(getattr(e, "response", None), "headers", {}) or {}
+            retry_after = int(headers.get("retry-after", 60))
+            raise RateLimitError(retry_after=retry_after)
 
         except (anthropic.APIConnectionError, anthropic.APITimeoutError) as e:
             logger.error("Claude API unavailable: %s", str(e), exc_info=True)
@@ -130,7 +132,9 @@ class ClaudeService:
 
         except anthropic.RateLimitError as e:
             logger.error("Claude API rate limit exceeded: %s", str(e), exc_info=True)
-            raise RateLimitError()
+            headers = getattr(getattr(e, "response", None), "headers", {}) or {}
+            retry_after = int(headers.get("retry-after", 60))
+            raise RateLimitError(retry_after=retry_after)
 
         except (anthropic.APIConnectionError, anthropic.APITimeoutError) as e:
             logger.error("Claude API unavailable: %s", str(e), exc_info=True)
