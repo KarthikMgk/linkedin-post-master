@@ -143,7 +143,8 @@ Return your response as JSON with the following structure containing ALL THREE v
             "engagement_score": 8.5,
             "hook_strength": "Strong",
             "suggestions": ["Specific improvement suggestion 1", "Specific improvement suggestion 2"],
-            "cta": "Call to action used"
+            "cta": "Call to action used",
+            "image_alt_text": "Brief description of an ideal complementary image (1-2 sentences)"
         },
         {
             "id": "unique-id-2",
@@ -154,7 +155,8 @@ Return your response as JSON with the following structure containing ALL THREE v
             "engagement_score": 8.2,
             "hook_strength": "Strong",
             "suggestions": ["..."],
-            "cta": "..."
+            "cta": "...",
+            "image_alt_text": "..."
         },
         {
             "id": "unique-id-3",
@@ -165,7 +167,8 @@ Return your response as JSON with the following structure containing ALL THREE v
             "engagement_score": 8.8,
             "hook_strength": "Exceptional",
             "suggestions": ["..."],
-            "cta": "..."
+            "cta": "...",
+            "image_alt_text": "..."
         }
     ]
 }
@@ -200,7 +203,7 @@ Now generate all three variants from the provided content."""
         # Build user message from processed inputs
         user_message = self._format_inputs_for_generation(processed_inputs)
 
-        # Generate content using Claude
+        # Generate content via AI service
         response = await self.claude.generate_content(
             system_prompt=self.system_prompt,
             user_message=user_message,
@@ -294,11 +297,12 @@ Now generate all three variants from the provided content."""
                     variant["post"] = variant["post_text"].replace("\\n", "\n").strip()
                     del variant["post_text"]
 
-            # Ensure we have exactly 3 variants
-            if len(variants) != 3:
-                print(f"Warning: Expected 3 variants, got {len(variants)}")
+            # Pad to exactly 3 variants using fallback if the model returned fewer
+            if len(variants) < 3:
+                fallbacks = self._fallback_variants("")
+                variants = variants + fallbacks[len(variants):]
 
-            return variants[:3]  # Return max 3
+            return variants[:3]
 
         except json.JSONDecodeError as e:
             print(f"Variant JSON parsing error: {e}")

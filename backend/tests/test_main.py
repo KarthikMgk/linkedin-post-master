@@ -12,10 +12,10 @@ from unittest.mock import AsyncMock, patch
 # POST /api/generate
 # ---------------------------------------------------------------------------
 
-def test_generate_success_with_text_input(client, mock_gen_result):
+def test_generate_success_with_text_input(client, mock_variants_result):
     """AC2: Valid text input returns 200 with all required fields."""
-    with patch("main.content_agent.generate_post", new_callable=AsyncMock) as mock_gen:
-        mock_gen.return_value = mock_gen_result
+    with patch("main.content_agent.generate_variants", new_callable=AsyncMock) as mock_gen:
+        mock_gen.return_value = mock_variants_result
 
         response = client.post(
             "/api/generate",
@@ -32,10 +32,10 @@ def test_generate_success_with_text_input(client, mock_gen_result):
     assert "suggestions" in data
 
 
-def test_generate_response_maps_fields_correctly(client, mock_gen_result):
+def test_generate_response_maps_fields_correctly(client, mock_variants_result):
     """AC2: Response fields map correctly from content_agent result."""
-    with patch("main.content_agent.generate_post", new_callable=AsyncMock) as mock_gen:
-        mock_gen.return_value = mock_gen_result
+    with patch("main.content_agent.generate_variants", new_callable=AsyncMock) as mock_gen:
+        mock_gen.return_value = mock_variants_result
 
         response = client.post(
             "/api/generate",
@@ -43,11 +43,11 @@ def test_generate_response_maps_fields_correctly(client, mock_gen_result):
         )
 
     data = response.json()
-    assert data["post"] == mock_gen_result["post_text"]
-    assert data["hashtags"] == mock_gen_result["hashtags"]
-    assert data["engagement_score"] == mock_gen_result["engagement_score"]
-    assert data["hook_strength"] == mock_gen_result["hook_strength"]
-    assert data["suggestions"] == mock_gen_result["suggestions"]
+    assert data["post"] == mock_variants_result[0]["post"]
+    assert data["hashtags"] == mock_variants_result[0]["hashtags"]
+    assert data["engagement_score"] == mock_variants_result[0]["engagement_score"]
+    assert data["hook_strength"] == mock_variants_result[0]["hook_strength"]
+    assert data["suggestions"] == mock_variants_result[0]["suggestions"]
 
 
 def test_generate_empty_body_returns_400(client):
@@ -71,10 +71,10 @@ def test_generate_400_includes_error_message(client):
     assert len(data["error"]["message"]) > 0
 
 
-def test_generate_with_url_input_succeeds(client, mock_gen_result):
+def test_generate_with_url_input_succeeds(client, mock_variants_result):
     """URL-only input is accepted (FR4)."""
-    with patch("main.content_agent.generate_post", new_callable=AsyncMock) as mock_gen:
-        mock_gen.return_value = mock_gen_result
+    with patch("main.content_agent.generate_variants", new_callable=AsyncMock) as mock_gen:
+        mock_gen.return_value = mock_variants_result
 
         response = client.post(
             "/api/generate",
@@ -85,10 +85,10 @@ def test_generate_with_url_input_succeeds(client, mock_gen_result):
     assert response.json()["success"] is True
 
 
-def test_generate_includes_metadata(client, mock_gen_result):
+def test_generate_includes_metadata(client, mock_variants_result):
     """Response includes metadata with inputs_processed count."""
-    with patch("main.content_agent.generate_post", new_callable=AsyncMock) as mock_gen:
-        mock_gen.return_value = mock_gen_result
+    with patch("main.content_agent.generate_variants", new_callable=AsyncMock) as mock_gen:
+        mock_gen.return_value = mock_variants_result
 
         response = client.post(
             "/api/generate",
@@ -102,7 +102,7 @@ def test_generate_includes_metadata(client, mock_gen_result):
 
 def test_generate_agent_exception_returns_500(client):
     """Unhandled exception from content_agent → HTTP 500."""
-    with patch("main.content_agent.generate_post", new_callable=AsyncMock) as mock_gen:
+    with patch("main.content_agent.generate_variants", new_callable=AsyncMock) as mock_gen:
         mock_gen.side_effect = Exception("Claude API unexpectedly unavailable")
 
         response = client.post(

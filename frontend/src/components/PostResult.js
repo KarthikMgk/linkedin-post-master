@@ -2,14 +2,33 @@ import React, { useState } from 'react';
 import './PostResult.css';
 import apiService from '../services/apiService';
 
+const LINKEDIN_CHAR_LIMIT = 3000;
+
 function PostResult({ result, onReset }) {
+  // Initialise variants from multi-variant response or wrap legacy single response
+  const initialVariants = result.variants && result.variants.length > 0
+    ? result.variants
+    : [result];
+
+  const [variants, setVariants] = useState(initialVariants);
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const [isRefining, setIsRefining] = useState(false);
   const [refinementFeedback, setRefinementFeedback] = useState('');
-  const [currentPost, setCurrentPost] = useState(result);
   const [error, setError] = useState('');
   const [showCopyToast, setShowCopyToast] = useState(false);
-  const [toastMessage, setToastMessage] = useState('Copied to clipboard!');
+  const [toastMessage, setToastMessage] = useState('Post copied! Ready to paste in LinkedIn');
   const [isUpdating, setIsUpdating] = useState(false);
+
+  const currentPost = variants[selectedIndex];
+  const charCount = currentPost.post ? currentPost.post.length : 0;
+  const isOverLimit = charCount > LINKEDIN_CHAR_LIMIT;
+
+  const handleSelectVariant = (index) => {
+    if (index === selectedIndex) return;
+    setSelectedIndex(index);
+    setError('');
+    setRefinementFeedback('');
+  };
 
   const handleRefine = async () => {
     if (!refinementFeedback.trim()) {
@@ -23,30 +42,40 @@ function PostResult({ result, onReset }) {
     try {
       const refined = await apiService.refinePost({
         postText: currentPost.post,
-        feedback: refinementFeedback
+        feedback: refinementFeedback,
+        variantId: currentPost.id,
+        personality: currentPost.personality,
+        label: currentPost.label,
       });
 
-      // Trigger fade-out animation
       setIsUpdating(true);
 
-      // Wait for fade-out, then update content
       setTimeout(() => {
-        setCurrentPost({
-          ...currentPost,
-          post: refined.refined_post,
-          engagement_score: refined.engagement_score,
-          hook_strength: refined.hook_strength || currentPost.hook_strength,
-          hashtags: refined.hashtags || currentPost.hashtags,
-          suggestions: refined.suggestions || currentPost.suggestions
+        setVariants((prev) => {
+          const updated = [...prev];
+          updated[selectedIndex] = {
+            ...updated[selectedIndex],
+            post: refined.refined_post,
+            engagement_score: refined.engagement_score,
+            hook_strength: refined.hook_strength || updated[selectedIndex].hook_strength,
+            hashtags: refined.hashtags && refined.hashtags.length > 0
+              ? refined.hashtags
+              : updated[selectedIndex].hashtags,
+            suggestions: refined.suggestions && refined.suggestions.length > 0
+              ? refined.suggestions
+              : updated[selectedIndex].suggestions,
+            cta: refined.cta || updated[selectedIndex].cta,
+            image_alt_text: refined.image_alt_text !== undefined
+              ? refined.image_alt_text
+              : updated[selectedIndex].image_alt_text,
+          };
+          return updated;
         });
 
-        // Trigger fade-in animation
         setTimeout(() => setIsUpdating(false), 50);
       }, 300);
 
       setRefinementFeedback('');
-
-      // Show success toast
       setToastMessage('Post refined successfully!');
       setShowCopyToast(true);
       setTimeout(() => setShowCopyToast(false), 3000);
@@ -60,10 +89,9 @@ function PostResult({ result, onReset }) {
 
   const copyToClipboard = () => {
     const fullPost = `${currentPost.post}\n\n${currentPost.hashtags.map(tag => `#${tag}`).join(' ')}`;
-    navigator.clipboard.writeText(fullPost);
+    navigator.clipboard.writeText(fullPost)?.catch(() => {});
 
-    // Show toast notification
-    setToastMessage('Copied to clipboard!');
+    setToastMessage('Post copied! Ready to paste in LinkedIn');
     setShowCopyToast(true);
     setTimeout(() => setShowCopyToast(false), 3000);
   };
@@ -86,9 +114,8 @@ function PostResult({ result, onReset }) {
 
   return (
     <div className="post-result">
-      {/* Toast Notification */}
       {showCopyToast && (
-        <div className="toast-notification">
+        <div className="toast-notification" role="status">
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
             <circle cx="10" cy="10" r="9" fill="#059669" stroke="white" strokeWidth="2"/>
             <path d="M6 10l3 3 5-6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -105,6 +132,23 @@ function PostResult({ result, onReset }) {
           </button>
         </div>
 
+        {/* Variant Tabs — only shown when multiple variants exist */}
+        {variants.length > 1 && (
+          <div className="variant-tabs" role="tablist" aria-label="Post variants">
+            {variants.map((variant, index) => (
+              <button
+                key={variant.id || index}
+                role="tab"
+                aria-selected={index === selectedIndex}
+                className={`variant-tab ${index === selectedIndex ? 'active' : ''}`}
+                onClick={() => handleSelectVariant(index)}
+              >
+                {variant.label || `Variant ${index + 1}`}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Engagement Metrics */}
         <div className={`metrics-panel ${isUpdating ? 'updating' : ''}`}>
           <div className="metric">
@@ -112,6 +156,7 @@ function PostResult({ result, onReset }) {
             <span
               className="metric-value"
               style={{ color: getScoreColor(currentPost.engagement_score) }}
+              aria-label={`Engagement score: ${currentPost.engagement_score} out of 10`}
             >
               {currentPost.engagement_score}/10
             </span>
@@ -138,11 +183,21 @@ function PostResult({ result, onReset }) {
               </React.Fragment>
             ))}
           </div>
+          <div
+            className="char-count"
+            style={{ color: isOverLimit ? '#f44336' : '#666' }}
+            aria-label={`Character count: ${charCount} of ${LINKEDIN_CHAR_LIMIT}`}
+          >
+            {charCount.toLocaleString()} / {LINKEDIN_CHAR_LIMIT.toLocaleString()} characters
+            {isOverLimit ? ' ⚠ Over LinkedIn limit' : ' ✓'}
+          </div>
         </div>
 
         {/* Hashtags */}
         <div className={`hashtags-section ${isUpdating ? 'updating' : ''}`}>
-          <label className="section-label">Hashtags:</label>
+          <label className="section-label">
+            Hashtags: <span className="hashtag-count">({currentPost.hashtags.length} — recommended 3–5)</span>
+          </label>
           <div className="hashtags">
             {currentPost.hashtags.map((tag, index) => (
               <span key={index} className="hashtag">#{tag}</span>
@@ -159,6 +214,22 @@ function PostResult({ result, onReset }) {
                 <li key={index}>{suggestion}</li>
               ))}
             </ul>
+          </div>
+        )}
+
+        {/* CTA */}
+        {currentPost.cta && (
+          <div className={`cta-section ${isUpdating ? 'updating' : ''}`}>
+            <label className="section-label">Call to Action</label>
+            <p className="cta-text">{currentPost.cta}</p>
+          </div>
+        )}
+
+        {/* Suggested Image Concept */}
+        {currentPost.image_alt_text && (
+          <div className={`image-concept-section ${isUpdating ? 'updating' : ''}`}>
+            <label className="section-label">Suggested Image Concept</label>
+            <p className="image-alt-text">{currentPost.image_alt_text}</p>
           </div>
         )}
 
@@ -190,6 +261,7 @@ function PostResult({ result, onReset }) {
               placeholder="Make it more engaging..."
               rows="3"
               disabled={isRefining}
+              aria-label="Refinement feedback"
             />
             <button
               onClick={handleRefine}
@@ -207,7 +279,7 @@ function PostResult({ result, onReset }) {
             </button>
           </div>
 
-          {error && <div className="error-message">{error}</div>}
+          {error && <div className="error-message" role="alert">{error}</div>}
         </div>
       </div>
     </div>
