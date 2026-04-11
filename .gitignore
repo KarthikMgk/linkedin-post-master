@@ -36,3 +36,5 @@ backend/temp/
 
 # Output artifacts
 _bmad-output/
+.claude/skills/*
+_bmad/*

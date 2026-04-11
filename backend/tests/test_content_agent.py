@@ -1,7 +1,7 @@
 """
 Unit tests for ContentGenerationAgent.
 
-All Claude API calls are mocked via AsyncMock on a mock ClaudeService instance.
+All MiniMax API calls are mocked via AsyncMock on a mock MiniMaxService instance.
 Tests validate JSON parsing, fallback behavior, and method delegation.
 """
 import json
@@ -59,8 +59,8 @@ async def test_generate_post_returns_dict(agent, mock_claude_service):
     assert isinstance(result, dict)
 
 
-async def test_generate_post_calls_claude_generate_content(agent, mock_claude_service):
-    """generate_post delegates to claude_service.generate_content exactly once."""
+async def test_generate_post_calls_minimax_generate_content(agent, mock_claude_service):
+    """generate_post delegates to minimax_service.generate_content exactly once."""
     mock_claude_service.generate_content.return_value = json.dumps(VALID_RESPONSE_PAYLOAD)
     await agent.generate_post(SAMPLE_PROCESSED_INPUTS)
     mock_claude_service.generate_content.assert_called_once()

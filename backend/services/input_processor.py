@@ -2,12 +2,25 @@
 Input Processing Service
 Handles multi-format input processing (text, PDF, images, URLs)
 """
+import atexit
 import io
+import asyncio
 import PyPDF2
 import pytesseract
 from PIL import Image
 from typing import List, Dict, Optional
 from fastapi import UploadFile
+from concurrent.futures import ThreadPoolExecutor
+
+from utils.exceptions import InvalidFileError
+from utils.logger import get_logger
+from utils.sanitizer import sanitize_input
+
+logger = get_logger(__name__)
+
+# Thread pool for running blocking OCR without blocking the event loop
+_ocr_executor = ThreadPoolExecutor(max_workers=4)
+atexit.register(_ocr_executor.shutdown, wait=False)
 
 
 class InputProcessor:
@@ -34,21 +47,21 @@ class InputProcessor:
         """
         processed = []
 
-        # Process text input
+        # Process text input — sanitize before storing
         if text and text.strip():
             processed.append({
                 "type": "text",
-                "content": text.strip(),
+                "content": sanitize_input(text.strip()),
                 "priority": "primary"
             })
 
-        # Process PDF
+        # Process PDF — raises InvalidFileError on corrupt input
         if pdf:
             pdf_content = await self._extract_pdf_text(pdf)
             if pdf_content:
                 processed.append({
                     "type": "pdf",
-                    "content": pdf_content,
+                    "content": sanitize_input(pdf_content),
                     "priority": "primary" if not text else "supporting"
                 })
 
@@ -59,7 +72,7 @@ class InputProcessor:
                 if img_text:
                     processed.append({
                         "type": "image",
-                        "content": img_text,
+                        "content": sanitize_input(img_text),
                         "priority": "supporting"
                     })
 
@@ -79,20 +92,18 @@ class InputProcessor:
 
     async def _extract_pdf_text(self, pdf_file: UploadFile) -> str:
         """
-        Extract text content from PDF
+        Extract text content from PDF.
 
-        Args:
-            pdf_file: Uploaded PDF file
+        Raises:
+            InvalidFileError: If the PDF cannot be read or parsed.
 
         Returns:
-            Extracted text content
+            Extracted text content.
         """
         try:
-            # Read PDF file
             content = await pdf_file.read()
             pdf_reader = PyPDF2.PdfReader(io.BytesIO(content))
 
-            # Extract text from all pages
             text_parts = []
             for page in pdf_reader.pages:
                 page_text = page.extract_text()
@@ -101,30 +112,28 @@ class InputProcessor:
 
             return "\n\n".join(text_parts)
 
+        except InvalidFileError:
+            raise
         except Exception as e:
-            print(f"PDF extraction error: {e}")
-            return ""
+            logger.error("PDF extraction error: %s", str(e), exc_info=True)
+            raise InvalidFileError(f"PDF file is corrupt or unreadable: {str(e)}")
 
     async def _extract_image_text(self, image_file: UploadFile) -> str:
         """
-        Extract text from image using OCR
-
-        Args:
-            image_file: Uploaded image file
+        Extract text from image using OCR.
 
         Returns:
-            Extracted text content
+            Extracted text content, or empty string on failure (silently skipped).
         """
         try:
-            # Read image file
             content = await image_file.read()
             image = Image.open(io.BytesIO(content))
 
-            # Perform OCR
-            text = pytesseract.image_to_string(image)
-
+            # Run blocking OCR in thread pool to avoid blocking the event loop
+            loop = asyncio.get_running_loop()
+            text = await loop.run_in_executor(_ocr_executor, pytesseract.image_to_string, image)
             return text.strip()
 
         except Exception as e:
-            print(f"Image OCR error: {e}")
+            logger.error("Image OCR error: %s", str(e), exc_info=True)
             return ""

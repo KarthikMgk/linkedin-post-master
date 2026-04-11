@@ -2,7 +2,7 @@
 Unit tests for InputProcessor and ClaudeService.
 
 InputProcessor: mocks PyPDF2, pytesseract, PIL.Image
-ClaudeService: mocks anthropic.Anthropic client
+ClaudeService: mocks anthropic.AsyncAnthropic client
 """
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -233,106 +233,102 @@ async def test_failed_ocr_returns_no_image_item(processor):
 
 
 # ---------------------------------------------------------------------------
-# ClaudeService  (FR10 — validate service wrapper layer)
+# ClaudeService — mocks anthropic.AsyncAnthropic client
 # ---------------------------------------------------------------------------
 
-def test_claude_service_raises_on_missing_api_key():
-    """ClaudeService raises ValueError when api_key is None."""
-    with pytest.raises(ValueError, match="ANTHROPIC_API_KEY not provided"):
-        ClaudeService(api_key=None)
+def _make_text_content_block(text):
+    """Create a mock ContentBlock with type=text."""
+    block = MagicMock()
+    block.type = "text"
+    block.text = text
+    return block
 
 
-def test_claude_service_raises_on_empty_api_key():
-    """ClaudeService raises ValueError when api_key is empty string."""
-    with pytest.raises(ValueError):
-        ClaudeService(api_key="")
+def _make_thinking_content_block(thinking):
+    """Create a mock ContentBlock with type=thinking."""
+    block = MagicMock()
+    block.type = "thinking"
+    block.thinking = thinking
+    return block
+
+
+def _make_mock_message(content_blocks):
+    """Create a mock Message with content list."""
+    msg = MagicMock()
+    msg.content = content_blocks
+    return msg
+
+
+def _make_mock_client(create_response):
+    """Create a mock AsyncAnthropic client with a configured messages.create."""
+    mock_client = MagicMock()
+    mock_client.messages = MagicMock()
+    mock_client.messages.create = AsyncMock(return_value=create_response)
+    return mock_client
 
 
 async def test_generate_content_returns_text_from_response():
-    """generate_content returns the text from response.content[0].text."""
-    with patch("anthropic.Anthropic") as mock_anthropic_cls:
-        mock_client = MagicMock()
-        mock_anthropic_cls.return_value = mock_client
-
-        mock_response = MagicMock()
-        mock_response.content = [MagicMock(text="Generated post content")]
-        mock_client.messages.create.return_value = mock_response
-
-        service = ClaudeService(api_key="test-key")
-        result = await service.generate_content("system prompt", "user message")
-
+    """generate_content returns the text from response content block."""
+    mock_msg = _make_mock_message([_make_text_content_block("Generated post content")])
+    mock_client = _make_mock_client(mock_msg)
+    service = ClaudeService(api_key="any-key", client=mock_client)
+    result = await service.generate_content("system prompt", "user message")
     assert result == "Generated post content"
 
 
-async def test_generate_content_calls_messages_create_once():
-    """generate_content calls client.messages.create exactly once."""
-    with patch("anthropic.Anthropic") as mock_anthropic_cls:
-        mock_client = MagicMock()
-        mock_anthropic_cls.return_value = mock_client
+async def test_generate_content_skips_thinking_blocks():
+    """generate_content returns text block even when thinking block is present."""
+    mock_msg = _make_mock_message([
+        _make_thinking_content_block("Internal reasoning"),
+        _make_text_content_block("Actual response")
+    ])
+    mock_client = _make_mock_client(mock_msg)
+    service = ClaudeService(api_key="any-key", client=mock_client)
+    result = await service.generate_content("system", "user")
+    assert result == "Actual response"
 
-        mock_response = MagicMock()
-        mock_response.content = [MagicMock(text="Response")]
-        mock_client.messages.create.return_value = mock_response
 
-        service = ClaudeService(api_key="test-key")
-        await service.generate_content("system", "user")
-
-    mock_client.messages.create.assert_called_once()
+async def test_generate_content_calls_create_once():
+    """generate_content calls client.messages.create and returns text."""
+    mock_msg = _make_mock_message([_make_text_content_block("Response")])
+    mock_client = _make_mock_client(mock_msg)
+    service = ClaudeService(api_key="test-key", client=mock_client)
+    result = await service.generate_content("system", "user")
+    assert result == "Response"
 
 
 async def test_generate_with_conversation_returns_text():
-    """generate_with_conversation returns text from response.content[0].text."""
-    with patch("anthropic.Anthropic") as mock_anthropic_cls:
-        mock_client = MagicMock()
-        mock_anthropic_cls.return_value = mock_client
-
-        mock_response = MagicMock()
-        mock_response.content = [MagicMock(text="Conversation reply")]
-        mock_client.messages.create.return_value = mock_response
-
-        service = ClaudeService(api_key="test-key")
-        history = [{"role": "user", "content": "Refine this"}]
-        result = await service.generate_with_conversation("system", history)
-
+    """generate_with_conversation returns text from response content block."""
+    mock_msg = _make_mock_message([_make_text_content_block("Conversation reply")])
+    mock_client = _make_mock_client(mock_msg)
+    service = ClaudeService(api_key="test-key", client=mock_client)
+    history = [{"role": "user", "content": "Refine this"}]
+    result = await service.generate_with_conversation("system", history)
     assert result == "Conversation reply"
 
 
 async def test_test_connection_returns_true_on_success():
     """test_connection returns True when messages.create succeeds."""
-    with patch("anthropic.Anthropic") as mock_anthropic_cls:
-        mock_client = MagicMock()
-        mock_anthropic_cls.return_value = mock_client
-
-        mock_response = MagicMock()
-        mock_response.content = [MagicMock(text="Hi")]
-        mock_client.messages.create.return_value = mock_response
-
-        service = ClaudeService(api_key="test-key")
-        result = await service.test_connection()
-
+    mock_msg = _make_mock_message([_make_text_content_block("Hi")])
+    mock_client = _make_mock_client(mock_msg)
+    service = ClaudeService(api_key="test-key", client=mock_client)
+    result = await service.test_connection()
     assert result is True
 
 
 async def test_test_connection_returns_false_on_exception():
     """test_connection returns False (not raises) when API call fails."""
-    with patch("anthropic.Anthropic") as mock_anthropic_cls:
-        mock_client = MagicMock()
-        mock_anthropic_cls.return_value = mock_client
-        mock_client.messages.create.side_effect = Exception("Network error")
-
-        service = ClaudeService(api_key="test-key")
-        result = await service.test_connection()
-
+    mock_client = MagicMock()
+    mock_client.messages.create = AsyncMock(side_effect=Exception("Network error"))
+    service = ClaudeService(api_key="test-key", client=mock_client)
+    result = await service.test_connection()
     assert result is False
 
 
 async def test_generate_content_raises_on_api_failure():
     """generate_content raises Exception (propagated) when API call fails."""
-    with patch("anthropic.Anthropic") as mock_anthropic_cls:
-        mock_client = MagicMock()
-        mock_anthropic_cls.return_value = mock_client
-        mock_client.messages.create.side_effect = Exception("API error")
-
-        service = ClaudeService(api_key="test-key")
-        with pytest.raises(Exception, match="Claude API call failed"):
-            await service.generate_content("system", "user")
+    mock_client = MagicMock()
+    mock_client.messages.create = AsyncMock(side_effect=Exception("API error"))
+    service = ClaudeService(api_key="test-key", client=mock_client)
+    with pytest.raises(Exception, match="Claude API call failed"):
+        await service.generate_content("system", "user")

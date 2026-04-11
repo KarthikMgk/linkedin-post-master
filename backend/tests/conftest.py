@@ -2,7 +2,7 @@
 Pytest configuration and shared fixtures for the LinkedIn Post Generator backend tests.
 
 Sets up environment variables BEFORE importing the app to prevent
-ClaudeService from failing due to missing ANTHROPIC_API_KEY.
+MiniMaxService from failing due to missing ANTHROPIC_API_KEY.
 """
 import os
 import sys
@@ -37,6 +37,52 @@ MOCK_GENERATION_RESULT = {
     "cta": "What's your experience with AI agents?",
 }
 
+# Mock result for generate_variants (list of 3 variant dicts)
+MOCK_VARIANTS_RESULT = [
+    {
+        "id": "variant-001",
+        "personality": "bold",
+        "label": "Bold Approach",
+        "post": (
+            "AI agents in enterprise are transforming how we work.\n\n"
+            "Here's what most people miss about the adoption challenge..."
+        ),
+        "hashtags": ["AIAgents", "EnterpriseTech", "FutureOfWork"],
+        "engagement_score": 8.5,
+        "hook_strength": "Strong",
+        "suggestions": ["Add a specific data point", "End with a question"],
+        "cta": "What's your experience with AI agents?",
+    },
+    {
+        "id": "variant-002",
+        "personality": "structured",
+        "label": "Structured Approach",
+        "post": (
+            "AI agents are reshaping enterprise software.\n\n"
+            "Key insight: adoption challenges differ from traditional tools..."
+        ),
+        "hashtags": ["AIAgents", "EnterpriseTech", "FutureOfWork"],
+        "engagement_score": 8.2,
+        "hook_strength": "Strong",
+        "suggestions": ["Add data points"],
+        "cta": "Share your thoughts below",
+    },
+    {
+        "id": "variant-003",
+        "personality": "provocative",
+        "label": "Provocative Approach",
+        "post": (
+            "Everyone's talking about AI agents.\n\n"
+            "Almost nobody is actually deploying them successfully..."
+        ),
+        "hashtags": ["AIAgents", "EnterpriseTech", "FutureOfWork"],
+        "engagement_score": 8.8,
+        "hook_strength": "Exceptional",
+        "suggestions": ["Consider the timing"],
+        "cta": "Drop your experiences below",
+    },
+]
+
 MOCK_REFINE_RESULT = {
     "post_text": "AI agents aren't just tools. They're your new colleagues.\n\nHere's the truth nobody talks about.",
     "hashtags": ["AIAgents", "EnterpriseTech", "Innovation"],
@@ -61,6 +107,11 @@ def client():
 @pytest.fixture
 def mock_gen_result():
     return MOCK_GENERATION_RESULT.copy()
+
+
+@pytest.fixture
+def mock_variants_result():
+    return MOCK_VARIANTS_RESULT.copy()
 
 
 @pytest.fixture

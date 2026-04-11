@@ -10,7 +10,6 @@ Covers:
 """
 import logging
 import pytest
-import anthropic
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from utils.exceptions import InvalidFileError, RateLimitError, ServiceUnavailableError
@@ -24,7 +23,7 @@ from utils.logger import get_logger, _LOG_FORMAT
 
 def test_generate_rate_limit_returns_503(client):
     """AC1: Claude rate limit → HTTP 503 with RATE_LIMIT_EXCEEDED code."""
-    with patch("main.content_agent.generate_post", new_callable=AsyncMock) as mock_gen:
+    with patch("main.content_agent.generate_variants", new_callable=AsyncMock) as mock_gen:
         mock_gen.side_effect = RateLimitError(retry_after=60)
         response = client.post("/api/generate", data={"text_input": "Some text"})
 
@@ -38,7 +37,7 @@ def test_generate_rate_limit_returns_503(client):
 
 def test_generate_service_unavailable_returns_503(client):
     """AC2: Claude API unavailable → HTTP 503 with SERVICE_UNAVAILABLE code."""
-    with patch("main.content_agent.generate_post", new_callable=AsyncMock) as mock_gen:
+    with patch("main.content_agent.generate_variants", new_callable=AsyncMock) as mock_gen:
         mock_gen.side_effect = ServiceUnavailableError("Claude API unavailable: connection refused")
         response = client.post("/api/generate", data={"text_input": "Some text"})
 
@@ -51,7 +50,7 @@ def test_generate_service_unavailable_returns_503(client):
 
 def test_generate_service_unavailable_no_unhandled_exception(client):
     """AC2: No unhandled exception propagates — always returns structured response."""
-    with patch("main.content_agent.generate_post", new_callable=AsyncMock) as mock_gen:
+    with patch("main.content_agent.generate_variants", new_callable=AsyncMock) as mock_gen:
         mock_gen.side_effect = ServiceUnavailableError("timeout")
         response = client.post("/api/generate", data={"text_input": "Some text"})
 
@@ -149,13 +148,15 @@ def test_corrupt_pdf_with_valid_text_returns_400_not_500(client):
 # ---------------------------------------------------------------------------
 
 async def test_generate_content_raises_rate_limit_error():
-    """AC1: anthropic.RateLimitError from SDK → RateLimitError (generate_content)."""
-    with patch("anthropic.Anthropic") as mock_cls:
-        mock_client = MagicMock()
-        mock_cls.return_value = mock_client
-        mock_client.messages.create.side_effect = anthropic.RateLimitError(
-            message="rate limited", response=MagicMock(status_code=429), body={}
-        )
+    """AC1: anthropic RateLimitError → RateLimitError (generate_content)."""
+    import anthropic
+    import httpx
+    request = httpx.Request("POST", "http://test")
+    response = httpx.Response(429, request=request)
+    rate_limit_err = anthropic.RateLimitError(message="rate limited", response=response, body=None)
+    mock_client = MagicMock()
+    mock_client.messages.create.side_effect = rate_limit_err
+    with patch("services.claude_service.anthropic.AsyncAnthropic", return_value=mock_client):
         from services.claude_service import ClaudeService
         svc = ClaudeService(api_key="test-key")
         with pytest.raises(RateLimitError):
@@ -163,13 +164,14 @@ async def test_generate_content_raises_rate_limit_error():
 
 
 async def test_generate_content_raises_service_unavailable_on_connection_error():
-    """AC2: anthropic.APIConnectionError → ServiceUnavailableError (generate_content)."""
-    with patch("anthropic.Anthropic") as mock_cls:
-        mock_client = MagicMock()
-        mock_cls.return_value = mock_client
-        mock_client.messages.create.side_effect = anthropic.APIConnectionError(
-            request=MagicMock()
-        )
+    """AC2: anthropic APIConnectionError → ServiceUnavailableError (generate_content)."""
+    import anthropic
+    import httpx
+    request = httpx.Request("POST", "http://test")
+    conn_err = anthropic.APIConnectionError(message="connection refused", request=request)
+    mock_client = MagicMock()
+    mock_client.messages.create.side_effect = conn_err
+    with patch("services.claude_service.anthropic.AsyncAnthropic", return_value=mock_client):
         from services.claude_service import ClaudeService
         svc = ClaudeService(api_key="test-key")
         with pytest.raises(ServiceUnavailableError):
@@ -177,13 +179,15 @@ async def test_generate_content_raises_service_unavailable_on_connection_error()
 
 
 async def test_generate_with_conversation_raises_rate_limit_error():
-    """AC1: anthropic.RateLimitError → RateLimitError (generate_with_conversation)."""
-    with patch("anthropic.Anthropic") as mock_cls:
-        mock_client = MagicMock()
-        mock_cls.return_value = mock_client
-        mock_client.messages.create.side_effect = anthropic.RateLimitError(
-            message="rate limited", response=MagicMock(status_code=429), body={}
-        )
+    """AC1: anthropic RateLimitError → RateLimitError (generate_with_conversation)."""
+    import anthropic
+    import httpx
+    request = httpx.Request("POST", "http://test")
+    response = httpx.Response(429, request=request)
+    rate_limit_err = anthropic.RateLimitError(message="rate limited", response=response, body=None)
+    mock_client = MagicMock()
+    mock_client.messages.create.side_effect = rate_limit_err
+    with patch("services.claude_service.anthropic.AsyncAnthropic", return_value=mock_client):
         from services.claude_service import ClaudeService
         svc = ClaudeService(api_key="test-key")
         with pytest.raises(RateLimitError):
@@ -191,13 +195,14 @@ async def test_generate_with_conversation_raises_rate_limit_error():
 
 
 async def test_generate_with_conversation_raises_service_unavailable():
-    """AC2: anthropic.APIConnectionError → ServiceUnavailableError (generate_with_conversation)."""
-    with patch("anthropic.Anthropic") as mock_cls:
-        mock_client = MagicMock()
-        mock_cls.return_value = mock_client
-        mock_client.messages.create.side_effect = anthropic.APIConnectionError(
-            request=MagicMock()
-        )
+    """AC2: anthropic APIConnectionError → ServiceUnavailableError (generate_with_conversation)."""
+    import anthropic
+    import httpx
+    request = httpx.Request("POST", "http://test")
+    conn_err = anthropic.APIConnectionError(message="connection refused", request=request)
+    mock_client = MagicMock()
+    mock_client.messages.create.side_effect = conn_err
+    with patch("services.claude_service.anthropic.AsyncAnthropic", return_value=mock_client):
         from services.claude_service import ClaudeService
         svc = ClaudeService(api_key="test-key")
         with pytest.raises(ServiceUnavailableError):
@@ -290,7 +295,7 @@ def test_sanitizer_strips_surrounding_whitespace():
 
 def test_sanitizer_applied_to_text_input(client, mock_gen_result):
     """AC5: Text with <script> tag does not propagate into generation call."""
-    with patch("main.content_agent.generate_post", new_callable=AsyncMock) as mock_gen:
+    with patch("main.content_agent.generate_variants", new_callable=AsyncMock) as mock_gen:
         mock_gen.return_value = mock_gen_result
         client.post(
             "/api/generate",

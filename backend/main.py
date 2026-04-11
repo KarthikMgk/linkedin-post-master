@@ -97,9 +97,14 @@ async def health_check():
     """Detailed health check with API connectivity"""
     try:
         api_status = await claude_service.test_connection()
+        if not api_status:
+            return JSONResponse(
+                status_code=503,
+                content={"status": "unhealthy", "claude_api": "error"}
+            )
         return {
             "status": "healthy",
-            "claude_api": "connected" if api_status else "error"
+            "claude_api": "connected"
         }
     except Exception as e:
         return JSONResponse(
@@ -179,7 +184,7 @@ async def generate_post(
         logger.error("Rate limit in generate request (%dms): %s", elapsed_ms, str(e), exc_info=True)
         return _error_response(
             503, "RATE_LIMIT_EXCEEDED",
-            "Claude API rate limit reached. Please try again in 60 seconds.",
+            "AI service rate limit reached. Please try again in 60 seconds.",
             retry_after=e.retry_after,
         )
     except ServiceUnavailableError as e:
@@ -245,7 +250,7 @@ async def refine_post(
         logger.error("Rate limit in refine request (%dms): %s", elapsed_ms, str(e), exc_info=True)
         return _error_response(
             503, "RATE_LIMIT_EXCEEDED",
-            "Claude API rate limit reached. Please try again in 60 seconds.",
+            "AI service rate limit reached. Please try again in 60 seconds.",
             retry_after=e.retry_after,
         )
     except ServiceUnavailableError as e:
