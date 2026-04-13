@@ -1,6 +1,7 @@
 /**
- * Tests for PostResult component — Story 1.3
+ * Tests for PostResult component — Stories 1.3, 1.4, 2.2
  * AC2: All fields render  AC3: Copy toast text  AC4: Refinement
+ * Story 2.2: Variant card display, selection, and copy
  */
 import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
@@ -57,24 +58,28 @@ function renderResult(overrides = {}) {
 
 test('AC2: post text renders with content', () => {
   renderResult();
-  expect(screen.getByText(/ai agents are transforming enterprise/i)).toBeInTheDocument();
+  // Post text renders in variant card and detail panel
+  expect(screen.getAllByText(/ai agents are transforming enterprise/i).length).toBeGreaterThanOrEqual(1);
 });
 
 test('AC2: engagement score displays as X/10', () => {
   renderResult();
-  expect(screen.getByText('8.5/10')).toBeInTheDocument();
+  // Score appears in variant card badge and in detail metrics panel
+  expect(screen.getAllByText('8.5/10').length).toBeGreaterThanOrEqual(1);
 });
 
 test('AC2: hook strength label renders', () => {
   renderResult();
-  expect(screen.getByText('Strong')).toBeInTheDocument();
+  // Hook strength appears in variant card and detail metrics panel
+  expect(screen.getAllByText('Strong').length).toBeGreaterThanOrEqual(1);
 });
 
 test('AC2: hashtags render with # prefix', () => {
   renderResult();
-  expect(screen.getByText('#AIAgents')).toBeInTheDocument();
-  expect(screen.getByText('#EnterpriseTech')).toBeInTheDocument();
-  expect(screen.getByText('#FutureOfWork')).toBeInTheDocument();
+  // Hashtags appear in variant card and detail hashtags section
+  expect(screen.getAllByText('#AIAgents').length).toBeGreaterThanOrEqual(1);
+  expect(screen.getAllByText('#EnterpriseTech').length).toBeGreaterThanOrEqual(1);
+  expect(screen.getAllByText('#FutureOfWork').length).toBeGreaterThanOrEqual(1);
 });
 
 test('AC2: improvement suggestions render', () => {
@@ -107,7 +112,8 @@ test('AC2: character count shows correct number', () => {
 
 test('AC2: character count shows green checkmark when under limit', () => {
   renderResult();
-  expect(screen.getByText(/✓/)).toBeInTheDocument();
+  // ✓ appears in char-count indicator; getAllByText handles any duplicates
+  expect(screen.getAllByText(/✓/).length).toBeGreaterThanOrEqual(1);
 });
 
 test('AC2: character count shows warning when over 3000 chars', () => {
@@ -217,7 +223,7 @@ test('AC4: refined post text replaces original', async () => {
   });
 
   await waitFor(() =>
-    expect(screen.getByText(/ai agents are your new colleagues/i)).toBeInTheDocument()
+    expect(screen.getAllByText(/ai agents are your new colleagues/i).length).toBeGreaterThanOrEqual(1)
   );
 });
 
@@ -233,7 +239,7 @@ test('AC4: engagement score updates after refinement', async () => {
     fireEvent.click(screen.getByRole('button', { name: /refine post/i }));
   });
 
-  await waitFor(() => expect(screen.getByText('9/10')).toBeInTheDocument());
+  await waitFor(() => expect(screen.getAllByText('9/10').length).toBeGreaterThanOrEqual(1));
 });
 
 test('AC4: refinement feedback cleared after successful refine', async () => {
@@ -283,8 +289,8 @@ test('AC4: image unavailable notice never shown (feature not yet wired)', () => 
 
 test('AC4: full text post still displays when imageGenerationFailed=true', () => {
   renderResult({ imageGenerationFailed: true });
-  expect(screen.getByText(/ai agents are transforming enterprise/i)).toBeInTheDocument();
-  expect(screen.getByText('#AIAgents')).toBeInTheDocument();
+  expect(screen.getAllByText(/ai agents are transforming enterprise/i).length).toBeGreaterThanOrEqual(1);
+  expect(screen.getAllByText('#AIAgents').length).toBeGreaterThanOrEqual(1);
 });
 
 // ---------------------------------------------------------------------------
@@ -307,4 +313,109 @@ test('AC5: Refining... shown while refine is in progress', async () => {
   expect(await screen.findByText(/refining\.\.\./i)).toBeInTheDocument();
 
   await act(async () => resolveRefine(MOCK_REFINED));
+});
+
+// ---------------------------------------------------------------------------
+// Story 2.2 — Variant Card Display
+// ---------------------------------------------------------------------------
+
+const MOCK_VARIANTS = [
+  {
+    id: 'v-001',
+    personality: 'bold',
+    label: 'Bold Approach',
+    post: 'Bold post content.\n\nBold paragraph two.',
+    hashtags: ['Bold', 'Leadership'],
+    engagement_score: 8.5,
+    hook_strength: 'Strong',
+    suggestions: ['Add data'],
+    cta: 'What do you think?',
+  },
+  {
+    id: 'v-002',
+    personality: 'structured',
+    label: 'Structured Approach',
+    post: 'Structured post content.\n\nStructured paragraph two.',
+    hashtags: ['Structured', 'Strategy'],
+    engagement_score: 7.5,
+    hook_strength: 'Moderate',
+    suggestions: ['Add hook'],
+    cta: 'Share your thoughts.',
+  },
+  {
+    id: 'v-003',
+    personality: 'provocative',
+    label: 'Provocative Approach',
+    post: 'Provocative post content.\n\nProvocative paragraph two.',
+    hashtags: ['Provocative', 'Disruption'],
+    engagement_score: 9.0,
+    hook_strength: 'Exceptional',
+    suggestions: [],
+    cta: 'Drop your take.',
+  },
+];
+
+function renderWithVariants() {
+  return render(
+    <PostResult
+      result={{ ...MOCK_RESULT, variants: MOCK_VARIANTS }}
+      onReset={jest.fn()}
+    />
+  );
+}
+
+test('2.2 AC1: renders 3 variant cards when variants array provided', () => {
+  renderWithVariants();
+  expect(screen.getAllByTestId(/variant-card-/)).toHaveLength(3);
+});
+
+test('2.2 AC2: each card shows its personality label', () => {
+  renderWithVariants();
+  expect(screen.getByText('Bold Approach')).toBeInTheDocument();
+  expect(screen.getByText('Structured Approach')).toBeInTheDocument();
+  expect(screen.getByText('Provocative Approach')).toBeInTheDocument();
+});
+
+test('2.2 AC2: each card shows its engagement score', () => {
+  renderWithVariants();
+  // 8.5/10 appears in card[0] badge and in detail metrics panel (selected variant)
+  expect(screen.getAllByText('8.5/10').length).toBeGreaterThanOrEqual(1);
+  // card[1] and card[2] scores appear only in their respective cards
+  expect(screen.getByText('7.5/10')).toBeInTheDocument();
+  expect(screen.getAllByText('9/10').length).toBeGreaterThanOrEqual(1);
+});
+
+test('2.2 AC3: clicking Select on card[1] updates detail panel to that variant', async () => {
+  renderWithVariants();
+  const selectButtons = screen.getAllByRole('button', { name: /select this variant/i });
+  await act(async () => {
+    fireEvent.click(selectButtons[1]);
+  });
+  // Detail metrics panel should now show card[1] score
+  expect(screen.getByText(/7\.5\/10/)).toBeInTheDocument();
+});
+
+test('2.2 AC3: selected card shows ✓ Selected button label', async () => {
+  renderWithVariants();
+  // Card[0] starts selected (✓ Selected), so only cards 1 and 2 have "Select This Variant"
+  const selectButtons = screen.getAllByRole('button', { name: /select this variant/i });
+  await act(async () => {
+    fireEvent.click(selectButtons[0]); // clicks card[1]
+  });
+  // Now card[1] is selected; card[0] and card[2] show "Select This Variant"
+  expect(screen.getByRole('button', { name: /✓ Selected/i })).toBeInTheDocument();
+});
+
+test('2.2 AC4: copy button in variant card triggers clipboard write', () => {
+  renderWithVariants();
+  const copyButtons = screen.getAllByRole('button', { name: /copy/i });
+  fireEvent.click(copyButtons[0]);
+  expect(navigator.clipboard.writeText).toHaveBeenCalled();
+});
+
+test('2.2 AC4: copy button in variant card shows toast', async () => {
+  renderWithVariants();
+  const copyButtons = screen.getAllByRole('button', { name: /copy/i });
+  fireEvent.click(copyButtons[0]);
+  expect(await screen.findByText('Post copied! Ready to paste in LinkedIn')).toBeInTheDocument();
 });

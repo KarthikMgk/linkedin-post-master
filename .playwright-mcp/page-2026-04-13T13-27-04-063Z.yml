@@ -1,0 +1,42 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e7] [cursor=pointer]:
+        - img [ref=e9]
+        - generic [ref=e13]:
+          - generic [ref=e14]: PostCraft AI
+          - generic [ref=e15]: LinkedIn Content Studio
+      - navigation [ref=e16]:
+        - button "Generate" [ref=e17] [cursor=pointer]
+        - button "History" [ref=e18] [cursor=pointer]
+        - button "Templates" [ref=e19] [cursor=pointer]
+      - generic [ref=e20]:
+        - button "New Post" [ref=e21] [cursor=pointer]:
+          - img [ref=e22]
+          - generic [ref=e25]: New Post
+        - button "Settings" [ref=e26] [cursor=pointer]:
+          - img [ref=e27]
+  - main [ref=e30]:
+    - generic [ref=e33]:
+      - heading "Create Your LinkedIn Post" [level=2] [ref=e34]
+      - paragraph [ref=e35]: Drop your content below - text, PDFs, images, or URLs. Our AI will synthesize everything into an engaging LinkedIn post.
+      - generic [ref=e36]:
+        - generic [ref=e38]:
+          - generic [ref=e39]: Text Content
+          - textbox "Text Content" [ref=e40]:
+            - /placeholder: Enter your content, ideas, or paste article text...
+        - generic [ref=e42]:
+          - generic [ref=e43]: PDF Document
+          - button "PDF Document" [ref=e44] [cursor=pointer]
+        - generic [ref=e46]:
+          - generic [ref=e47]: Images (with text)
+          - button "Images (with text)" [ref=e48] [cursor=pointer]
+        - generic [ref=e50]:
+          - generic [ref=e51]: URL Reference
+          - textbox "URL Reference" [ref=e52]:
+            - /placeholder: https://example.com/article
+        - generic [ref=e53]:
+          - button "Generate Post" [ref=e54] [cursor=pointer]
+          - button "Reset" [ref=e55] [cursor=pointer]
+  - contentinfo [ref=e56]:
+    - paragraph [ref=e57]: Powered by Claude AI • Built with React & FastAPI

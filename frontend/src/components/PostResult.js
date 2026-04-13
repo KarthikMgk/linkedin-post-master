@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import './PostResult.css';
 import apiService from '../services/apiService';
+import VariantCard from './VariantCard';
 
 const LINKEDIN_CHAR_LIMIT = 3000;
 
@@ -12,6 +13,7 @@ function PostResult({ result, onReset }) {
 
   const [variants, setVariants] = useState(initialVariants);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [hasUserSelected, setHasUserSelected] = useState(false);
   const [isRefining, setIsRefining] = useState(false);
   const [refinementFeedback, setRefinementFeedback] = useState('');
   const [error, setError] = useState('');
@@ -28,8 +30,8 @@ function PostResult({ result, onReset }) {
   const isOverLimit = charCount > LINKEDIN_CHAR_LIMIT;
 
   const handleSelectVariant = (index) => {
-    if (index === selectedIndex) return;
     setSelectedIndex(index);
+    setHasUserSelected(true);
     setError('');
     setRefinementFeedback('');
   };
@@ -88,13 +90,14 @@ function PostResult({ result, onReset }) {
     }
   };
 
-  const copyToClipboard = () => {
-    // P-7/P-10: use safe local variables; surface clipboard failure to user.
-    // Optimistic update: show success toast immediately, correct it only if clipboard rejects.
-    const fullPost = `${post}\n\n${hashtags.map(tag => `#${tag}`).join(' ')}`;
+  const copyToClipboard = (variant) => {
+    // Accept a specific variant to copy (from VariantCard onCopy), or fall back to currentPost.
+    // P-7/P-10: safe local variables; optimistic toast; ?.catch() guards non-Promise return.
+    const v = variant || currentPost;
+    const safePost = typeof v.post === 'string' ? v.post : '';
+    const safeHashtags = Array.isArray(v.hashtags) ? v.hashtags : [];
+    const fullPost = `${safePost}\n\n${safeHashtags.map(tag => `#${tag}`).join(' ')}`;
     if (navigator.clipboard) {
-      // Optimistic success toast — corrected to failure message if clipboard rejects.
-      // ?.catch() guards against environments where writeText returns undefined.
       setToastMessage('Post copied! Ready to paste in LinkedIn');
       setShowCopyToast(true);
       setTimeout(() => setShowCopyToast(false), 3000);
@@ -144,22 +147,20 @@ function PostResult({ result, onReset }) {
           </button>
         </div>
 
-        {/* Variant Tabs — only shown when multiple variants exist */}
-        {variants.length > 1 && (
-          <div className="variant-tabs" role="tablist" aria-label="Post variants">
-            {variants.map((variant, index) => (
-              <button
-                key={variant.id || index}
-                role="tab"
-                aria-selected={index === selectedIndex}
-                className={`variant-tab ${index === selectedIndex ? 'active' : ''}`}
-                onClick={() => handleSelectVariant(index)}
-              >
-                {variant.label || `Variant ${index + 1}`}
-              </button>
-            ))}
-          </div>
-        )}
+        {/* Variant Cards Row — all variants shown simultaneously (AC1, AC2, AC3, AC5) */}
+        <div className="variant-cards-row" aria-label="Post variants">
+          {variants.map((variant, index) => (
+            <VariantCard
+              key={variant.id || index}
+              variant={variant}
+              index={index}
+              isSelected={index === selectedIndex}
+              hasUserSelected={hasUserSelected}
+              onSelect={() => handleSelectVariant(index)}
+              onCopy={copyToClipboard}
+            />
+          ))}
+        </div>
 
         {/* Engagement Metrics */}
         <div className={`metrics-panel ${isUpdating ? 'updating' : ''}`}>
@@ -245,12 +246,7 @@ function PostResult({ result, onReset }) {
           </div>
         )}
 
-        {/* Actions */}
-        <div className="actions">
-          <button onClick={copyToClipboard} className="btn-action">
-            Copy to Clipboard
-          </button>
-        </div>
+        {/* Copy action lives inside each VariantCard (AC4) */}
 
         {/* Refinement Section */}
         <div className="refinement-section">

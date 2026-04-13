@@ -1,0 +1,197 @@
+/* Variant Cards Row — horizontal scrollable container (AC5) */
+.variant-cards-row {
+  display: flex;
+  flex-direction: row;
+  gap: var(--spacing-xl);
+  overflow-x: auto;
+  padding-bottom: var(--spacing-md);
+  margin-bottom: var(--spacing-2xl);
+  /* Smooth scrollbar on macOS/modern browsers */
+  scrollbar-width: thin;
+  scrollbar-color: var(--gray-300) transparent;
+}
+
+.variant-cards-row::-webkit-scrollbar {
+  height: 6px;
+}
+
+.variant-cards-row::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.variant-cards-row::-webkit-scrollbar-thumb {
+  background: var(--gray-300);
+  border-radius: 3px;
+}
+
+/* Base card (AC2, AC5) */
+.variant-card {
+  min-width: 340px;
+  flex: 1 0 340px;
+  background: white;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: var(--spacing-xl);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  transition: opacity 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  /* Staggered fade-in animation (AC1) */
+  animation: variantFadeIn 0.4s ease-out both;
+}
+
+/* Selected card state (AC3) */
+.variant-card--selected {
+  border: 2px solid var(--primary);
+  box-shadow: var(--shadow-lg);
+}
+
+/* Dimmed non-selected cards (AC3) */
+.variant-card--dimmed {
+  opacity: 0.6;
+}
+
+/* Fade-in keyframe (AC1) */
+@keyframes variantFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Card header: badge row */
+.variant-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+}
+
+/* Personality color badge (AC2) */
+.variant-card__badge {
+  display: inline-block;
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 4px var(--spacing-md);
+  border-radius: var(--radius-md);
+  white-space: nowrap;
+}
+
+/* Engagement score badge (AC2) */
+.variant-card__score-badge {
+  font-size: 1rem;
+  font-weight: 700;
+  border: 2px solid;
+  border-radius: var(--radius-md);
+  padding: 2px var(--spacing-md);
+  white-space: nowrap;
+  background: white;
+}
+
+/* Hook strength label */
+.variant-card__hook {
+  font-size: 0.8rem;
+  color: var(--gray-600);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--gray-50);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--gray-200);
+}
+
+/* Post text area — no max-height clipping (AC5) */
+.variant-card__post {
+  font-size: 0.9rem;
+  line-height: 1.7;
+  color: var(--gray-900);
+  background: var(--gray-50);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-lg);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  flex: 1; /* fill available space so actions stay at bottom */
+}
+
+/* Hashtags */
+.variant-card__hashtags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+}
+
+.variant-card__hashtag {
+  background: var(--primary);
+  color: white;
+  padding: 3px var(--spacing-md);
+  border-radius: var(--radius-md);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+/* Actions row */
+.variant-card__actions {
+  display: flex;
+  gap: var(--spacing-md);
+  margin-top: auto;
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--gray-100);
+}
+
+/* Select button (AC3) */
+.variant-card__select-btn {
+  flex: 1;
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: white;
+  color: var(--gray-700);
+  border: 1px solid var(--gray-300);
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  letter-spacing: 0.025em;
+}
+
+.variant-card__select-btn:hover {
+  background: var(--gray-50);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.variant-card__select-btn--active {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+.variant-card__select-btn--active:hover {
+  background: var(--primary-dark);
+  color: white;
+}
+
+/* Copy button (AC4) */
+.variant-card__copy-btn {
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: white;
+  color: var(--gray-600);
+  border: 1px solid var(--gray-300);
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.variant-card__copy-btn:hover {
+  background: var(--gray-50);
+  border-color: var(--gray-400);
+}
