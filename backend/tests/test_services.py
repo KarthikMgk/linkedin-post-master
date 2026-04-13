@@ -4,18 +4,20 @@ Unit tests for InputProcessor and ClaudeService.
 InputProcessor: mocks PyPDF2, pytesseract, PIL.Image
 ClaudeService: mocks anthropic.AsyncAnthropic client
 """
-import pytest
+
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from services.input_processor import InputProcessor
-from services.claude_service import ClaudeService
-from utils.exceptions import InvalidFileError
+import pytest
 
+from services.claude_service import ClaudeService
+from services.input_processor import InputProcessor
+from utils.exceptions import InvalidFileError
 
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def processor():
@@ -25,6 +27,7 @@ def processor():
 # ---------------------------------------------------------------------------
 # InputProcessor — text input  (FR1, FR5, FR6)
 # ---------------------------------------------------------------------------
+
 
 async def test_process_text_returns_single_primary_item(processor):
     """AC5: Text input produces one item with type=text and priority=primary."""
@@ -58,8 +61,7 @@ async def test_process_url_becomes_primary_when_only_input(processor):
 async def test_process_text_plus_url_text_is_primary_url_is_supporting(processor):
     """FR6: When text + URL provided, text is primary, URL is supporting."""
     result = await processor.process_inputs(
-        text="My main idea",
-        url="https://example.com/reference"
+        text="My main idea", url="https://example.com/reference"
     )
     by_type = {r["type"]: r for r in result}
     assert by_type["text"]["priority"] == "primary"
@@ -68,16 +70,14 @@ async def test_process_text_plus_url_text_is_primary_url_is_supporting(processor
 
 async def test_process_multiple_inputs_returns_multiple_items(processor):
     """FR5: Text + URL together produce two items."""
-    result = await processor.process_inputs(
-        text="Main content",
-        url="https://example.com"
-    )
+    result = await processor.process_inputs(text="Main content", url="https://example.com")
     assert len(result) == 2
 
 
 # ---------------------------------------------------------------------------
 # InputProcessor — PDF extraction  (FR2, FR7, AC5)
 # ---------------------------------------------------------------------------
+
 
 async def test_pdf_extraction_returns_content(processor):
     """AC5: PDF text extraction returns non-empty content."""
@@ -160,13 +160,16 @@ async def test_corrupt_pdf_raises_invalid_file_error(processor):
 # InputProcessor — image OCR  (FR3, FR8, AC5)
 # ---------------------------------------------------------------------------
 
+
 async def test_image_ocr_returns_extracted_text(processor):
     """AC5: OCR extracts text from image and returns it as content."""
     mock_img = MagicMock()
     mock_img.read = AsyncMock(return_value=b"fake image bytes")
 
-    with patch("PIL.Image.open") as mock_open, \
-         patch("pytesseract.image_to_string", return_value="Text extracted from image"):
+    with (
+        patch("PIL.Image.open") as mock_open,
+        patch("pytesseract.image_to_string", return_value="Text extracted from image"),
+    ):
         mock_open.return_value = MagicMock()
         result = await processor.process_inputs(images=[mock_img])
 
@@ -180,8 +183,10 @@ async def test_image_alone_promoted_to_primary(processor):
     mock_img = MagicMock()
     mock_img.read = AsyncMock(return_value=b"fake image bytes")
 
-    with patch("PIL.Image.open") as mock_open, \
-         patch("pytesseract.image_to_string", return_value="Some text"):
+    with (
+        patch("PIL.Image.open") as mock_open,
+        patch("pytesseract.image_to_string", return_value="Some text"),
+    ):
         mock_open.return_value = MagicMock()
         result = await processor.process_inputs(images=[mock_img])
 
@@ -193,13 +198,12 @@ async def test_image_with_text_is_supporting(processor):
     mock_img = MagicMock()
     mock_img.read = AsyncMock(return_value=b"fake image bytes")
 
-    with patch("PIL.Image.open") as mock_open, \
-         patch("pytesseract.image_to_string", return_value="Image text"):
+    with (
+        patch("PIL.Image.open") as mock_open,
+        patch("pytesseract.image_to_string", return_value="Image text"),
+    ):
         mock_open.return_value = MagicMock()
-        result = await processor.process_inputs(
-            text="Primary text content",
-            images=[mock_img]
-        )
+        result = await processor.process_inputs(text="Primary text content", images=[mock_img])
 
     image_items = [r for r in result if r["type"] == "image"]
     assert image_items[0]["priority"] == "supporting"
@@ -212,8 +216,10 @@ async def test_multiple_images_each_produce_item(processor):
     mock_img2 = MagicMock()
     mock_img2.read = AsyncMock(return_value=b"img2 bytes")
 
-    with patch("PIL.Image.open") as mock_open, \
-         patch("pytesseract.image_to_string", return_value="Text"):
+    with (
+        patch("PIL.Image.open") as mock_open,
+        patch("pytesseract.image_to_string", return_value="Text"),
+    ):
         mock_open.return_value = MagicMock()
         result = await processor.process_inputs(images=[mock_img1, mock_img2])
 
@@ -236,6 +242,7 @@ async def test_failed_ocr_returns_no_image_item(processor):
 # ---------------------------------------------------------------------------
 # ClaudeService — mocks anthropic.AsyncAnthropic client
 # ---------------------------------------------------------------------------
+
 
 def _make_text_content_block(text):
     """Create a mock ContentBlock with type=text."""
@@ -279,10 +286,12 @@ async def test_generate_content_returns_text_from_response():
 
 async def test_generate_content_skips_thinking_blocks():
     """generate_content returns text block even when thinking block is present."""
-    mock_msg = _make_mock_message([
-        _make_thinking_content_block("Internal reasoning"),
-        _make_text_content_block("Actual response")
-    ])
+    mock_msg = _make_mock_message(
+        [
+            _make_thinking_content_block("Internal reasoning"),
+            _make_text_content_block("Actual response"),
+        ]
+    )
     mock_client = _make_mock_client(mock_msg)
     service = ClaudeService(api_key="any-key", client=mock_client)
     result = await service.generate_content("system", "user")

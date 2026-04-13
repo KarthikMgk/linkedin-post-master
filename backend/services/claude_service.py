@@ -2,9 +2,11 @@
 Claude API Service
 Handles all interactions with Anthropic's Claude API.
 """
-import anthropic
-from typing import Dict, List
+
 import os
+from typing import Optional
+
+import anthropic
 
 from utils.exceptions import RateLimitError, ServiceUnavailableError
 from utils.logger import get_logger
@@ -15,7 +17,7 @@ logger = get_logger(__name__)
 class ClaudeService:
     """Service for interacting with Anthropic's Claude API"""
 
-    def __init__(self, api_key: str, model: str = None, client=None):
+    def __init__(self, api_key: str, model: Optional[str] = None, client=None):
         """
         Initialize Claude service.
 
@@ -28,7 +30,7 @@ class ClaudeService:
             raise ValueError("ANTHROPIC_API_KEY not provided")
 
         self.client = client if client is not None else anthropic.AsyncAnthropic(api_key=api_key)
-        self.model = model or os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6")
+        self.model: str = model or os.getenv("CLAUDE_MODEL") or "claude-sonnet-4-6"
 
     async def test_connection(self) -> bool:
         """
@@ -39,9 +41,7 @@ class ClaudeService:
         """
         try:
             response = await self.client.messages.create(
-                model=self.model,
-                max_tokens=10,
-                messages=[{"role": "user", "content": "Hi"}]
+                model=self.model, max_tokens=10, messages=[{"role": "user", "content": "Hi"}]
             )
             return response.content is not None
         except Exception as e:
@@ -53,7 +53,7 @@ class ClaudeService:
         system_prompt: str,
         user_message: str,
         max_tokens: int = 2000,
-        temperature: float = 1.0
+        temperature: float = 1.0,
     ) -> str:
         """
         Generate content using Claude.
@@ -73,7 +73,7 @@ class ClaudeService:
                 max_tokens=max_tokens,
                 temperature=temperature,
                 system=system_prompt,
-                messages=[{"role": "user", "content": user_message}]
+                messages=[{"role": "user", "content": user_message}],
             )
             if not response.content:
                 return ""
@@ -86,22 +86,22 @@ class ClaudeService:
             logger.error("Claude API rate limit exceeded: %s", str(e), exc_info=True)
             headers = getattr(getattr(e, "response", None), "headers", {}) or {}
             retry_after = int(headers.get("retry-after", 60))
-            raise RateLimitError(retry_after=retry_after)
+            raise RateLimitError(retry_after=retry_after) from e
 
         except (anthropic.APIConnectionError, anthropic.APITimeoutError) as e:
             logger.error("Claude API unavailable: %s", str(e), exc_info=True)
-            raise ServiceUnavailableError(f"Claude API unavailable: {str(e)}")
+            raise ServiceUnavailableError(f"Claude API unavailable: {str(e)}") from e
 
         except Exception as e:
             logger.error("Claude API call failed: %s", str(e), exc_info=True)
-            raise Exception(f"Claude API call failed: {str(e)}")
+            raise Exception(f"Claude API call failed: {str(e)}") from e
 
     async def generate_with_conversation(
         self,
         system_prompt: str,
-        conversation_history: List[Dict[str, str]],
+        conversation_history: list[dict[str, str]],
         max_tokens: int = 2000,
-        temperature: float = 1.0
+        temperature: float = 1.0,
     ) -> str:
         """
         Generate content with conversation history for refinement.
@@ -121,7 +121,7 @@ class ClaudeService:
                 max_tokens=max_tokens,
                 temperature=temperature,
                 system=system_prompt,
-                messages=conversation_history
+                messages=conversation_history,  # type: ignore[arg-type]
             )
             if not response.content:
                 return ""
@@ -134,12 +134,12 @@ class ClaudeService:
             logger.error("Claude API rate limit exceeded: %s", str(e), exc_info=True)
             headers = getattr(getattr(e, "response", None), "headers", {}) or {}
             retry_after = int(headers.get("retry-after", 60))
-            raise RateLimitError(retry_after=retry_after)
+            raise RateLimitError(retry_after=retry_after) from e
 
         except (anthropic.APIConnectionError, anthropic.APITimeoutError) as e:
             logger.error("Claude API unavailable: %s", str(e), exc_info=True)
-            raise ServiceUnavailableError(f"Claude API unavailable: {str(e)}")
+            raise ServiceUnavailableError(f"Claude API unavailable: {str(e)}") from e
 
         except Exception as e:
             logger.error("Claude conversation API call failed: %s", str(e), exc_info=True)
-            raise Exception(f"Claude conversation API call failed: {str(e)}")
+            raise Exception(f"Claude conversation API call failed: {str(e)}") from e

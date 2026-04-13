@@ -8,18 +8,20 @@ Covers:
   AC4 - Structured log format (via logger.py)
   AC5 - Input sanitizer strips injection vectors
 """
+
 import logging
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from utils.exceptions import InvalidFileError, RateLimitError, ServiceUnavailableError
-from utils.sanitizer import sanitize_input
-from utils.logger import get_logger, _LOG_FORMAT
+import pytest
 
+from utils.exceptions import InvalidFileError, RateLimitError, ServiceUnavailableError
+from utils.logger import _LOG_FORMAT, get_logger
+from utils.sanitizer import sanitize_input
 
 # ---------------------------------------------------------------------------
 # AC1 + AC2 — /api/generate rate-limit and service-unavailable handling
 # ---------------------------------------------------------------------------
+
 
 def test_generate_rate_limit_returns_503(client):
     """AC1: Claude rate limit → HTTP 503 with RATE_LIMIT_EXCEEDED code."""
@@ -64,10 +66,7 @@ def test_refine_rate_limit_returns_503(client):
     """AC1: Rate limit on /api/refine also returns 503."""
     with patch("main.content_agent.refine_post", new_callable=AsyncMock) as mock_ref:
         mock_ref.side_effect = RateLimitError(retry_after=60)
-        response = client.post(
-            "/api/refine",
-            data={"post_text": "Post", "feedback": "punchy"}
-        )
+        response = client.post("/api/refine", data={"post_text": "Post", "feedback": "punchy"})
 
     assert response.status_code == 503
     data = response.json()
@@ -79,10 +78,7 @@ def test_refine_service_unavailable_returns_503(client):
     """AC2: Service unavailable on /api/refine returns 503."""
     with patch("main.content_agent.refine_post", new_callable=AsyncMock) as mock_ref:
         mock_ref.side_effect = ServiceUnavailableError("timeout")
-        response = client.post(
-            "/api/refine",
-            data={"post_text": "Post", "feedback": "punchy"}
-        )
+        response = client.post("/api/refine", data={"post_text": "Post", "feedback": "punchy"})
 
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "SERVICE_UNAVAILABLE"
@@ -91,6 +87,7 @@ def test_refine_service_unavailable_returns_503(client):
 # ---------------------------------------------------------------------------
 # AC1 — structured error format on 400
 # ---------------------------------------------------------------------------
+
 
 def test_generate_400_uses_structured_error_format(client):
     """400 (no inputs) response has success:false and error.code."""
@@ -103,6 +100,7 @@ def test_generate_400_uses_structured_error_format(client):
 # ---------------------------------------------------------------------------
 # AC3 — corrupt PDF → HTTP 400
 # ---------------------------------------------------------------------------
+
 
 def test_corrupt_pdf_returns_400(client):
     """AC3: Corrupt PDF file → HTTP 400 with INVALID_FILE code."""
@@ -147,10 +145,12 @@ def test_corrupt_pdf_with_valid_text_returns_400_not_500(client):
 # AC3 — ClaudeService raises correct exception types
 # ---------------------------------------------------------------------------
 
+
 async def test_generate_content_raises_rate_limit_error():
     """AC1: anthropic RateLimitError → RateLimitError (generate_content)."""
     import anthropic
     import httpx
+
     request = httpx.Request("POST", "http://test")
     response = httpx.Response(429, request=request)
     rate_limit_err = anthropic.RateLimitError(message="rate limited", response=response, body=None)
@@ -158,6 +158,7 @@ async def test_generate_content_raises_rate_limit_error():
     mock_client.messages.create.side_effect = rate_limit_err
     with patch("services.claude_service.anthropic.AsyncAnthropic", return_value=mock_client):
         from services.claude_service import ClaudeService
+
         svc = ClaudeService(api_key="test-key")
         with pytest.raises(RateLimitError):
             await svc.generate_content("sys", "user")
@@ -167,12 +168,14 @@ async def test_generate_content_raises_service_unavailable_on_connection_error()
     """AC2: anthropic APIConnectionError → ServiceUnavailableError (generate_content)."""
     import anthropic
     import httpx
+
     request = httpx.Request("POST", "http://test")
     conn_err = anthropic.APIConnectionError(message="connection refused", request=request)
     mock_client = MagicMock()
     mock_client.messages.create.side_effect = conn_err
     with patch("services.claude_service.anthropic.AsyncAnthropic", return_value=mock_client):
         from services.claude_service import ClaudeService
+
         svc = ClaudeService(api_key="test-key")
         with pytest.raises(ServiceUnavailableError):
             await svc.generate_content("sys", "user")
@@ -182,6 +185,7 @@ async def test_generate_with_conversation_raises_rate_limit_error():
     """AC1: anthropic RateLimitError → RateLimitError (generate_with_conversation)."""
     import anthropic
     import httpx
+
     request = httpx.Request("POST", "http://test")
     response = httpx.Response(429, request=request)
     rate_limit_err = anthropic.RateLimitError(message="rate limited", response=response, body=None)
@@ -189,6 +193,7 @@ async def test_generate_with_conversation_raises_rate_limit_error():
     mock_client.messages.create.side_effect = rate_limit_err
     with patch("services.claude_service.anthropic.AsyncAnthropic", return_value=mock_client):
         from services.claude_service import ClaudeService
+
         svc = ClaudeService(api_key="test-key")
         with pytest.raises(RateLimitError):
             await svc.generate_with_conversation("sys", [{"role": "user", "content": "hi"}])
@@ -198,12 +203,14 @@ async def test_generate_with_conversation_raises_service_unavailable():
     """AC2: anthropic APIConnectionError → ServiceUnavailableError (generate_with_conversation)."""
     import anthropic
     import httpx
+
     request = httpx.Request("POST", "http://test")
     conn_err = anthropic.APIConnectionError(message="connection refused", request=request)
     mock_client = MagicMock()
     mock_client.messages.create.side_effect = conn_err
     with patch("services.claude_service.anthropic.AsyncAnthropic", return_value=mock_client):
         from services.claude_service import ClaudeService
+
         svc = ClaudeService(api_key="test-key")
         with pytest.raises(ServiceUnavailableError):
             await svc.generate_with_conversation("sys", [{"role": "user", "content": "hi"}])
@@ -212,6 +219,7 @@ async def test_generate_with_conversation_raises_service_unavailable():
 # ---------------------------------------------------------------------------
 # AC4 — Logger format
 # ---------------------------------------------------------------------------
+
 
 def test_logger_format_contains_required_fields():
     """AC4: Logger format string contains asctime, levelname, name, message."""
@@ -240,6 +248,7 @@ def test_get_logger_idempotent():
 # ---------------------------------------------------------------------------
 # AC5 — Input sanitizer
 # ---------------------------------------------------------------------------
+
 
 def test_sanitizer_removes_script_tags():
     """AC5: <script> injection is stripped from input."""
@@ -298,8 +307,7 @@ def test_sanitizer_applied_to_text_input(client, mock_gen_result):
     with patch("main.content_agent.generate_variants", new_callable=AsyncMock) as mock_gen:
         mock_gen.return_value = mock_gen_result
         client.post(
-            "/api/generate",
-            data={"text_input": 'Good idea <script>alert(1)</script> more text'}
+            "/api/generate", data={"text_input": "Good idea <script>alert(1)</script> more text"}
         )
 
     call_args = mock_gen.call_args[0][0]  # processed_inputs list

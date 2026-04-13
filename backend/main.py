@@ -2,18 +2,20 @@
 LinkedIn Post Generator - FastAPI Backend
 Main application entry point
 """
+
+import os
 import time
-from fastapi import FastAPI, Request, UploadFile, File, Form, HTTPException
+from typing import Any, Optional
+
+from dotenv import load_dotenv
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from typing import Optional, List
-import os
-from dotenv import load_dotenv
 
+from agents.content_agent import ContentGenerationAgent
 from services.claude_service import ClaudeService
 from services.input_processor import InputProcessor
-from agents.content_agent import ContentGenerationAgent
 from utils.exceptions import InvalidFileError, RateLimitError, ServiceUnavailableError
 from utils.logger import get_logger
 
@@ -25,16 +27,14 @@ logger = get_logger(__name__)
 app = FastAPI(
     title="LinkedIn Post Generator API",
     description="AI-powered LinkedIn post generation with multi-input synthesis",
-    version="0.1.0"
+    version="0.1.0",
 )
 
 # CORS — FRONTEND_URL is a comma-separated list so both the Vercel production
 # domain and localhost can be allowed simultaneously without wildcards.
 # P-6: fall back to localhost if env var is unset or empty.
 _allowed_origins = [
-    url.strip()
-    for url in os.getenv("FRONTEND_URL", "").split(",")
-    if url.strip()
+    url.strip() for url in os.getenv("FRONTEND_URL", "").split(",") if url.strip()
 ] or ["http://localhost:3000"]
 app.add_middleware(
     CORSMiddleware,
@@ -45,7 +45,7 @@ app.add_middleware(
 )
 
 # Initialize services
-claude_service = ClaudeService(api_key=os.getenv("ANTHROPIC_API_KEY"))
+claude_service = ClaudeService(api_key=os.getenv("ANTHROPIC_API_KEY") or "")
 input_processor = InputProcessor()
 content_agent = ContentGenerationAgent(claude_service)
 
@@ -54,8 +54,11 @@ content_agent = ContentGenerationAgent(claude_service)
 # Centralised error response helpers
 # ---------------------------------------------------------------------------
 
-def _error_response(status_code: int, code: str, message: str, retry_after: int = None) -> JSONResponse:
-    body = {"success": False, "error": {"code": code, "message": message}}
+
+def _error_response(
+    status_code: int, code: str, message: str, retry_after: Optional[int] = None
+) -> JSONResponse:
+    body: dict[str, Any] = {"success": False, "error": {"code": code, "message": message}}
     if retry_after is not None:
         body["error"]["retryAfter"] = retry_after
     return JSONResponse(status_code=status_code, content=body)
@@ -65,17 +68,26 @@ def _error_response(status_code: int, code: str, message: str, retry_after: int 
 # Exception handlers
 # ---------------------------------------------------------------------------
 
+
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
-    code_map = {400: "BAD_REQUEST", 401: "UNAUTHORIZED", 403: "FORBIDDEN",
-                404: "NOT_FOUND", 422: "VALIDATION_ERROR", 500: "INTERNAL_ERROR",
-                503: "SERVICE_UNAVAILABLE"}
+    code_map = {
+        400: "BAD_REQUEST",
+        401: "UNAUTHORIZED",
+        403: "FORBIDDEN",
+        404: "NOT_FOUND",
+        422: "VALIDATION_ERROR",
+        500: "INTERNAL_ERROR",
+        503: "SERVICE_UNAVAILABLE",
+    }
     code = code_map.get(exc.status_code, "ERROR")
     return _error_response(exc.status_code, code, exc.detail)
 
 
 @app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
     return _error_response(422, "VALIDATION_ERROR", str(exc))
 
 
@@ -83,14 +95,11 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 # Routes
 # ---------------------------------------------------------------------------
 
+
 @app.get("/")
 async def root():
     """Health check endpoint"""
-    return {
-        "status": "running",
-        "service": "LinkedIn Post Generator API",
-        "version": "0.1.0"
-    }
+    return {"status": "running", "service": "LinkedIn Post Generator API", "version": "0.1.0"}
 
 
 @app.get("/api/health")
@@ -100,17 +109,14 @@ async def health_check():
         api_status = await claude_service.test_connection()
         if not api_status:
             return JSONResponse(
-                status_code=503,
-                content={"status": "unhealthy", "claude_api": "error"}
+                status_code=503, content={"status": "unhealthy", "claude_api": "error"}
             )
-        return {
-            "status": "healthy",
-            "claude_api": "connected"
-        }
-    except Exception as e:
+        return {"status": "healthy", "claude_api": "connected"}
+    except Exception:
+        logger.exception("Health check failed while testing Claude API connection")
         return JSONResponse(
             status_code=503,
-            content={"status": "unhealthy", "error": str(e)}
+            content={"status": "unhealthy", "error": "Internal server error"},
         )
 
 
@@ -118,7 +124,7 @@ async def health_check():
 async def generate_post(
     text_input: Optional[str] = Form(default=None),
     pdf_file: Optional[UploadFile] = File(default=None),
-    image_files: List[UploadFile] = File(default=[]),
+    image_files: list[UploadFile] = File(default=[]),
     url_input: Optional[str] = Form(default=None),
 ):
     """
@@ -132,14 +138,14 @@ async def generate_post(
         if not any([has_text, pdf_file, image_files, has_url]):
             raise HTTPException(
                 status_code=400,
-                detail="At least one input source required (text, PDF, image, or URL)"
+                detail="At least one input source required (text, PDF, image, or URL)",
             )
 
         processed_inputs = await input_processor.process_inputs(
             text=text_input,
             pdf=pdf_file,
             images=image_files if image_files else None,
-            url=url_input
+            url=url_input,
         )
 
         # Generate 3 variants (Story 2.1)
@@ -173,32 +179,39 @@ async def generate_post(
             "variants": variants,
             "metadata": {
                 "inputs_processed": len(processed_inputs),
-                "primary_source": processed_inputs[0]["type"] if processed_inputs else None
-            }
+                "primary_source": processed_inputs[0]["type"] if processed_inputs else None,
+            },
         }
 
     except HTTPException:
         raise
     except InvalidFileError as e:
         elapsed_ms = int((time.monotonic() - start_time) * 1000)
-        logger.error("Invalid file in generate request (%dms): %s", elapsed_ms, str(e), exc_info=True)
+        logger.error(
+            "Invalid file in generate request (%dms): %s", elapsed_ms, str(e), exc_info=True
+        )
         return _error_response(400, "INVALID_FILE", str(e))
     except RateLimitError as e:
         elapsed_ms = int((time.monotonic() - start_time) * 1000)
         logger.error("Rate limit in generate request (%dms): %s", elapsed_ms, str(e), exc_info=True)
         return _error_response(
-            503, "RATE_LIMIT_EXCEEDED",
+            503,
+            "RATE_LIMIT_EXCEEDED",
             "AI service rate limit reached. Please try again in 60 seconds.",
             retry_after=e.retry_after,
         )
     except ServiceUnavailableError as e:
         elapsed_ms = int((time.monotonic() - start_time) * 1000)
-        logger.error("Service unavailable in generate request (%dms): %s", elapsed_ms, str(e), exc_info=True)
+        logger.error(
+            "Service unavailable in generate request (%dms): %s", elapsed_ms, str(e), exc_info=True
+        )
         return _error_response(503, "SERVICE_UNAVAILABLE", str(e))
     except Exception as e:
         elapsed_ms = int((time.monotonic() - start_time) * 1000)
-        logger.error("Unhandled error in generate request (%dms): %s", elapsed_ms, str(e), exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
+        logger.error(
+            "Unhandled error in generate request (%dms): %s", elapsed_ms, str(e), exc_info=True
+        )
+        raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}") from e
 
 
 @app.post("/api/refine")
@@ -218,7 +231,7 @@ async def refine_post(
     if personality and personality not in _VALID_PERSONALITIES:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid personality '{personality}'. Must be one of: {', '.join(sorted(_VALID_PERSONALITIES))}."
+            detail=f"Invalid personality '{personality}'. Must be one of: {', '.join(sorted(_VALID_PERSONALITIES))}.",
         )
 
     start_time = time.monotonic()
@@ -261,25 +274,31 @@ async def refine_post(
         elapsed_ms = int((time.monotonic() - start_time) * 1000)
         logger.error("Rate limit in refine request (%dms): %s", elapsed_ms, str(e), exc_info=True)
         return _error_response(
-            503, "RATE_LIMIT_EXCEEDED",
+            503,
+            "RATE_LIMIT_EXCEEDED",
             "AI service rate limit reached. Please try again in 60 seconds.",
             retry_after=e.retry_after,
         )
     except ServiceUnavailableError as e:
         elapsed_ms = int((time.monotonic() - start_time) * 1000)
-        logger.error("Service unavailable in refine request (%dms): %s", elapsed_ms, str(e), exc_info=True)
+        logger.error(
+            "Service unavailable in refine request (%dms): %s", elapsed_ms, str(e), exc_info=True
+        )
         return _error_response(503, "SERVICE_UNAVAILABLE", str(e))
     except Exception as e:
         elapsed_ms = int((time.monotonic() - start_time) * 1000)
-        logger.error("Unhandled error in refine request (%dms): %s", elapsed_ms, str(e), exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Refinement failed: {str(e)}")
+        logger.error(
+            "Unhandled error in refine request (%dms): %s", elapsed_ms, str(e), exc_info=True
+        )
+        raise HTTPException(status_code=500, detail=f"Refinement failed: {str(e)}") from e
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(
         "main:app",
         host=os.getenv("HOST", "0.0.0.0"),
         port=int(os.getenv("PORT", 8000)),
-        reload=os.getenv("DEBUG", "True") == "True"
+        reload=os.getenv("DEBUG", "True") == "True",
     )

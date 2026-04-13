@@ -4,16 +4,18 @@ Unit tests for ContentGenerationAgent.
 All Claude API calls are mocked via AsyncMock on a mock ClaudeService instance.
 Tests validate JSON parsing, fallback behavior, and method delegation.
 """
+
 import json
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from agents.content_agent import ContentGenerationAgent
+import pytest
 
+from agents.content_agent import ContentGenerationAgent
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def mock_claude_service():
@@ -51,6 +53,7 @@ SAMPLE_PROCESSED_INPUTS = [
 # ---------------------------------------------------------------------------
 # generate_post() tests  (AC4)
 # ---------------------------------------------------------------------------
+
 
 async def test_generate_post_returns_dict(agent, mock_claude_service):
     """generate_post returns a dict on valid JSON response."""
@@ -131,9 +134,15 @@ async def test_generate_post_formats_primary_content_in_message(agent, mock_clau
     """generate_post includes PRIMARY CONTENT label in user message."""
     mock_claude_service.generate_content.return_value = json.dumps(VALID_RESPONSE_PAYLOAD)
     await agent.generate_post(SAMPLE_PROCESSED_INPUTS)
-    _, kwargs = mock_claude_service.generate_content.call_args if mock_claude_service.generate_content.call_args[1] else (mock_claude_service.generate_content.call_args[0], {})
+    _, kwargs = (
+        mock_claude_service.generate_content.call_args
+        if mock_claude_service.generate_content.call_args[1]
+        else (mock_claude_service.generate_content.call_args[0], {})
+    )
     call_args = mock_claude_service.generate_content.call_args
-    user_message = call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("user_message", "")
+    user_message = (
+        call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("user_message", "")
+    )
     assert "PRIMARY CONTENT" in user_message
 
 
@@ -212,7 +221,7 @@ VALID_VARIANTS_RESPONSE = {
             "engagement_score": 8.5,
             "hook_strength": "Strong",
             "suggestions": ["Add data"],
-            "cta": "What's your take?"
+            "cta": "What's your take?",
         },
         {
             "id": "var-002",
@@ -223,7 +232,7 @@ VALID_VARIANTS_RESPONSE = {
             "engagement_score": 8.2,
             "hook_strength": "Strong",
             "suggestions": ["Great structure"],
-            "cta": "Share your lessons"
+            "cta": "Share your lessons",
         },
         {
             "id": "var-003",
@@ -234,8 +243,8 @@ VALID_VARIANTS_RESPONSE = {
             "engagement_score": 8.8,
             "hook_strength": "Exceptional",
             "suggestions": ["Powerful hook"],
-            "cta": "Tell me I'm wrong"
-        }
+            "cta": "Tell me I'm wrong",
+        },
     ]
 }
 
@@ -302,7 +311,15 @@ async def test_generate_variants_cleans_escaped_newlines(agent, mock_claude_serv
     """Post text with escaped \\n sequences is cleaned to real newlines."""
     response = {
         "variants": [
-            {"personality": "bold", "label": "Bold", "post": "Line1\\nLine2", "hashtags": [], "engagement_score": 7, "hook_strength": "Moderate", "suggestions": []}
+            {
+                "personality": "bold",
+                "label": "Bold",
+                "post": "Line1\\nLine2",
+                "hashtags": [],
+                "engagement_score": 7,
+                "hook_strength": "Moderate",
+                "suggestions": [],
+            }
         ]
     }
     mock_claude_service.generate_content.return_value = json.dumps(response)
@@ -326,7 +343,9 @@ VALID_VARIANT_REFINE_PAYLOAD = {
 
 async def test_refine_variant_preserves_personality(agent, mock_claude_service):
     """AC3: refine_variant preserves and returns the personality field."""
-    mock_claude_service.generate_with_conversation.return_value = json.dumps(VALID_VARIANT_REFINE_PAYLOAD)
+    mock_claude_service.generate_with_conversation.return_value = json.dumps(
+        VALID_VARIANT_REFINE_PAYLOAD
+    )
     result = await agent.refine_variant("Original", "make it bolder", "bold", "Bold Approach")
 
     assert "personality" in result
@@ -335,8 +354,12 @@ async def test_refine_variant_preserves_personality(agent, mock_claude_service):
 
 async def test_refine_variant_preserves_label(agent, mock_claude_service):
     """AC3: refine_variant preserves and returns the label field."""
-    mock_claude_service.generate_with_conversation.return_value = json.dumps(VALID_VARIANT_REFINE_PAYLOAD)
-    result = await agent.refine_variant("Original", "more structured", "structured", "Structured Approach")
+    mock_claude_service.generate_with_conversation.return_value = json.dumps(
+        VALID_VARIANT_REFINE_PAYLOAD
+    )
+    result = await agent.refine_variant(
+        "Original", "more structured", "structured", "Structured Approach"
+    )
 
     assert "label" in result
     assert result["label"] == "Structured Approach"
@@ -344,7 +367,9 @@ async def test_refine_variant_preserves_label(agent, mock_claude_service):
 
 async def test_refine_variant_returns_changes(agent, mock_claude_service):
     """refine_variant includes the changes field."""
-    mock_claude_service.generate_with_conversation.return_value = json.dumps(VALID_VARIANT_REFINE_PAYLOAD)
+    mock_claude_service.generate_with_conversation.return_value = json.dumps(
+        VALID_VARIANT_REFINE_PAYLOAD
+    )
     result = await agent.refine_variant("Post", "feedback", "provocative")
 
     assert "changes" in result
@@ -353,7 +378,9 @@ async def test_refine_variant_returns_changes(agent, mock_claude_service):
 
 async def test_refine_variant_without_personality_works(agent, mock_claude_service):
     """refine_variant works without personality (backward compat)."""
-    mock_claude_service.generate_with_conversation.return_value = json.dumps(VALID_VARIANT_REFINE_PAYLOAD)
+    mock_claude_service.generate_with_conversation.return_value = json.dumps(
+        VALID_VARIANT_REFINE_PAYLOAD
+    )
     result = await agent.refine_variant("Original", "feedback")
 
     assert "post_text" in result

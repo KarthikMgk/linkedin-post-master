@@ -1,0 +1,38 @@
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+exclude = ["venv", ".git", "__pycache__", "*.egg-info"]
+
+[tool.ruff.lint]
+# E: pycodestyle errors | F: pyflakes | I: isort | UP: pyupgrade | B: bugbear
+select = ["E", "F", "I", "UP", "B"]
+# E501  – line length is owned by the formatter, not the linter
+# B008  – FastAPI uses Depends()/File()/Form() as default argument values
+# UP007 – Optional[X] -> X | None only works at runtime on Python 3.10+
+ignore = ["E501", "B008", "UP007"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/*" = ["F401", "F811"]
+"**/conftest.py" = ["F401"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["agents", "services", "utils", "main"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+
+[tool.mypy]
+python_version = "3.9"
+# Day-1 lenient settings: catch real bugs without requiring full annotation coverage
+ignore_missing_imports = true      # anthropic, PyPDF2, pytesseract stubs are absent
+disallow_untyped_defs = false      # existing functions lack return annotations
+check_untyped_defs = true          # still analyse bodies of untyped functions
+no_implicit_optional = true        # f(x: str = None) is a bug, not a shorthand
+warn_redundant_casts = true
+warn_unused_configs = true
+warn_unused_ignores = false
+show_error_codes = true
+explicit_package_bases = true
+exclude = ["venv/", "tests/", "test_minimax_key\\.py", "test_api\\.py"]

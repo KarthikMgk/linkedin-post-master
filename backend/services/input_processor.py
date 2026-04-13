@@ -2,15 +2,17 @@
 Input Processing Service
 Handles multi-format input processing (text, PDF, images, URLs)
 """
+
+import asyncio
 import atexit
 import io
-import asyncio
+from concurrent.futures import ThreadPoolExecutor
+from typing import Optional
+
 import PyPDF2
 import pytesseract
-from PIL import Image
-from typing import List, Dict, Optional
 from fastapi import UploadFile
-from concurrent.futures import ThreadPoolExecutor
+from PIL import Image
 
 from utils.exceptions import InvalidFileError
 from utils.logger import get_logger
@@ -30,9 +32,9 @@ class InputProcessor:
         self,
         text: Optional[str] = None,
         pdf: Optional[UploadFile] = None,
-        images: Optional[List[UploadFile]] = None,
-        url: Optional[str] = None
-    ) -> List[Dict]:
+        images: Optional[list[UploadFile]] = None,
+        url: Optional[str] = None,
+    ) -> list[dict]:
         """
         Process all input sources and return structured data
 
@@ -49,40 +51,44 @@ class InputProcessor:
 
         # Process text input — sanitize before storing
         if text and text.strip():
-            processed.append({
-                "type": "text",
-                "content": sanitize_input(text.strip()),
-                "priority": "primary"
-            })
+            processed.append(
+                {"type": "text", "content": sanitize_input(text.strip()), "priority": "primary"}
+            )
 
         # Process PDF — raises InvalidFileError on corrupt input
         if pdf:
             pdf_content = await self._extract_pdf_text(pdf)
             if pdf_content:
-                processed.append({
-                    "type": "pdf",
-                    "content": sanitize_input(pdf_content),
-                    "priority": "primary" if not text else "supporting"
-                })
+                processed.append(
+                    {
+                        "type": "pdf",
+                        "content": sanitize_input(pdf_content),
+                        "priority": "primary" if not text else "supporting",
+                    }
+                )
 
         # Process images
         if images:
             for img in images:
                 img_text = await self._extract_image_text(img)
                 if img_text:
-                    processed.append({
-                        "type": "image",
-                        "content": sanitize_input(img_text),
-                        "priority": "supporting"
-                    })
+                    processed.append(
+                        {
+                            "type": "image",
+                            "content": sanitize_input(img_text),
+                            "priority": "supporting",
+                        }
+                    )
 
         # Process URL (placeholder for now)
         if url:
-            processed.append({
-                "type": "url",
-                "content": f"URL provided: {url} (URL extraction coming in Phase 2)",
-                "priority": "supporting"
-            })
+            processed.append(
+                {
+                    "type": "url",
+                    "content": f"URL provided: {url} (URL extraction coming in Phase 2)",
+                    "priority": "supporting",
+                }
+            )
 
         # Auto-detect primary content if not explicitly set
         if processed and not any(p["priority"] == "primary" for p in processed):
@@ -91,7 +97,7 @@ class InputProcessor:
         return processed
 
     # P-4: max file sizes enforced before reading into memory
-    _MAX_PDF_BYTES = 10 * 1024 * 1024   # 10 MB
+    _MAX_PDF_BYTES = 10 * 1024 * 1024  # 10 MB
     _MAX_IMAGE_BYTES = 5 * 1024 * 1024  # 5 MB
 
     # P-17: allowed MIME types
@@ -110,7 +116,10 @@ class InputProcessor:
         """
         try:
             # P-17: validate MIME type when content_type is explicitly provided as a string
-            if isinstance(pdf_file.content_type, str) and pdf_file.content_type not in self._ALLOWED_PDF_TYPES:
+            if (
+                isinstance(pdf_file.content_type, str)
+                and pdf_file.content_type not in self._ALLOWED_PDF_TYPES
+            ):
                 raise InvalidFileError(
                     f"Unsupported file type '{pdf_file.content_type}'. Only PDF files are accepted."
                 )
@@ -120,7 +129,7 @@ class InputProcessor:
             # P-4: enforce file size limit after read (UploadFile.size is not always populated)
             if len(content) > self._MAX_PDF_BYTES:
                 raise InvalidFileError(
-                    f"PDF file exceeds the 10 MB limit ({len(content) // (1024*1024)} MB uploaded)."
+                    f"PDF file exceeds the 10 MB limit ({len(content) // (1024 * 1024)} MB uploaded)."
                 )
 
             pdf_reader = PyPDF2.PdfReader(io.BytesIO(content))
@@ -137,7 +146,7 @@ class InputProcessor:
             raise
         except Exception as e:
             logger.error("PDF extraction error: %s", str(e), exc_info=True)
-            raise InvalidFileError(f"PDF file is corrupt or unreadable: {str(e)}")
+            raise InvalidFileError(f"PDF file is corrupt or unreadable: {str(e)}") from e
 
     async def _extract_image_text(self, image_file: UploadFile) -> str:
         """
@@ -148,7 +157,10 @@ class InputProcessor:
         """
         try:
             # P-17: validate MIME type when content_type is explicitly provided as a string
-            if isinstance(image_file.content_type, str) and image_file.content_type not in self._ALLOWED_IMAGE_TYPES:
+            if (
+                isinstance(image_file.content_type, str)
+                and image_file.content_type not in self._ALLOWED_IMAGE_TYPES
+            ):
                 logger.warning(
                     "Image OCR skipped: unsupported type '%s' for file '%s'",
                     image_file.content_type,
