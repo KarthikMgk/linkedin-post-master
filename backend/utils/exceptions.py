@@ -2,10 +2,6 @@
 Custom exception classes for structured error handling.
 """
 
-  
-
-  
-
 class RateLimitError(Exception):
     """Raised when the Claude API returns a 429 rate limit response."""
 
