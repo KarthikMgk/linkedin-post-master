@@ -2,6 +2,7 @@
 Centralised logging configuration.
 All modules should obtain loggers via get_logger(__name__).
 """
+
 import logging
 
 _LOG_FORMAT = "[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s"
