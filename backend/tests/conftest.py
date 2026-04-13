@@ -4,6 +4,7 @@ Pytest configuration and shared fixtures for the LinkedIn Post Generator backend
 Sets up environment variables BEFORE importing the app to prevent
 ClaudeService from failing due to missing ANTHROPIC_API_KEY.
 """
+
 import os
 import sys
 
@@ -15,12 +16,12 @@ os.environ.setdefault("FRONTEND_URL", "http://localhost:3000")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import copy
-import pytest
-from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, MagicMock
 
-from main import app
+import pytest
+from fastapi.testclient import TestClient
 
+from main import app
 
 # ---------------------------------------------------------------------------
 # Shared mock payloads
@@ -98,6 +99,7 @@ MOCK_REFINE_RESULT = {
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def client():

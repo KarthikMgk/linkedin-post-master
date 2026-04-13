@@ -4,13 +4,15 @@ Integration tests for FastAPI endpoints.
 Uses TestClient (sync) which handles async endpoint execution internally.
 Patches content_agent and claude_service methods to avoid real API calls.
 """
-import pytest
+
 from unittest.mock import AsyncMock, patch
 
+import pytest
 
 # ---------------------------------------------------------------------------
 # POST /api/generate
 # ---------------------------------------------------------------------------
+
 
 def test_generate_success_with_text_input(client, mock_variants_result):
     """AC2: Valid text input returns 200 with all required fields."""
@@ -19,7 +21,7 @@ def test_generate_success_with_text_input(client, mock_variants_result):
 
         response = client.post(
             "/api/generate",
-            data={"text_input": "AI agents in enterprise software are changing everything"}
+            data={"text_input": "AI agents in enterprise software are changing everything"},
         )
 
     assert response.status_code == 200
@@ -40,10 +42,7 @@ def test_generate_response_maps_fields_correctly(client, mock_variants_result):
     with patch("main.content_agent.generate_variants", new_callable=AsyncMock) as mock_gen:
         mock_gen.return_value = mock_variants_result
 
-        response = client.post(
-            "/api/generate",
-            data={"text_input": "Test content"}
-        )
+        response = client.post("/api/generate", data={"text_input": "Test content"})
 
     data = response.json()
     assert data["post"] == mock_variants_result[0]["post"]
@@ -79,10 +78,7 @@ def test_generate_with_url_input_succeeds(client, mock_variants_result):
     with patch("main.content_agent.generate_variants", new_callable=AsyncMock) as mock_gen:
         mock_gen.return_value = mock_variants_result
 
-        response = client.post(
-            "/api/generate",
-            data={"url_input": "https://example.com/article"}
-        )
+        response = client.post("/api/generate", data={"url_input": "https://example.com/article"})
 
     assert response.status_code == 200
     assert response.json()["success"] is True
@@ -93,10 +89,7 @@ def test_generate_includes_metadata(client, mock_variants_result):
     with patch("main.content_agent.generate_variants", new_callable=AsyncMock) as mock_gen:
         mock_gen.return_value = mock_variants_result
 
-        response = client.post(
-            "/api/generate",
-            data={"text_input": "Test input"}
-        )
+        response = client.post("/api/generate", data={"text_input": "Test input"})
 
     data = response.json()
     assert "metadata" in data
@@ -108,10 +101,7 @@ def test_generate_agent_exception_returns_500(client):
     with patch("main.content_agent.generate_variants", new_callable=AsyncMock) as mock_gen:
         mock_gen.side_effect = Exception("Claude API unexpectedly unavailable")
 
-        response = client.post(
-            "/api/generate",
-            data={"text_input": "Test input"}
-        )
+        response = client.post("/api/generate", data={"text_input": "Test input"})
 
     assert response.status_code == 500
 
@@ -119,6 +109,7 @@ def test_generate_agent_exception_returns_500(client):
 # ---------------------------------------------------------------------------
 # POST /api/refine
 # ---------------------------------------------------------------------------
+
 
 def test_refine_success(client, mock_refine_result):
     """AC6: Valid refine request returns 200 with refined_post."""
@@ -129,8 +120,8 @@ def test_refine_success(client, mock_refine_result):
             "/api/refine",
             data={
                 "post_text": "Original post content about AI agents",
-                "feedback": "make it punchier"
-            }
+                "feedback": "make it punchier",
+            },
         )
 
     assert response.status_code == 200
@@ -146,8 +137,7 @@ def test_refine_returns_engagement_score(client, mock_refine_result):
         mock_refine.return_value = mock_refine_result
 
         response = client.post(
-            "/api/refine",
-            data={"post_text": "Post text", "feedback": "add more energy"}
+            "/api/refine", data={"post_text": "Post text", "feedback": "add more energy"}
         )
 
     assert "engagement_score" in response.json()
@@ -155,19 +145,13 @@ def test_refine_returns_engagement_score(client, mock_refine_result):
 
 def test_refine_missing_post_text_returns_422(client):
     """Missing required post_text → HTTP 422 (FastAPI validation)."""
-    response = client.post(
-        "/api/refine",
-        data={"feedback": "make it better"}
-    )
+    response = client.post("/api/refine", data={"feedback": "make it better"})
     assert response.status_code == 422
 
 
 def test_refine_missing_feedback_returns_422(client):
     """Missing required feedback → HTTP 422 (FastAPI validation)."""
-    response = client.post(
-        "/api/refine",
-        data={"post_text": "Some post content"}
-    )
+    response = client.post("/api/refine", data={"post_text": "Some post content"})
     assert response.status_code == 422
 
 
@@ -177,8 +161,7 @@ def test_refine_calls_agent_with_correct_args(client, mock_refine_result):
         mock_refine.return_value = mock_refine_result
 
         client.post(
-            "/api/refine",
-            data={"post_text": "Original post", "feedback": "make it punchier"}
+            "/api/refine", data={"post_text": "Original post", "feedback": "make it punchier"}
         )
 
     mock_refine.assert_called_once_with("Original post", "make it punchier")
@@ -187,6 +170,7 @@ def test_refine_calls_agent_with_correct_args(client, mock_refine_result):
 # ---------------------------------------------------------------------------
 # GET /api/health
 # ---------------------------------------------------------------------------
+
 
 def test_health_returns_200(client):
     """Health endpoint returns HTTP 200."""

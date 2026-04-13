@@ -2,9 +2,12 @@
 Simple test script to verify API setup
 Run this after setting up backend to test Claude API integration
 """
+
 import asyncio
 import os
+
 from dotenv import load_dotenv
+
 from services.claude_service import ClaudeService
 
 # Load environment variables
@@ -44,7 +47,7 @@ async def test_claude_connection():
             response = await claude.generate_content(
                 system_prompt="You are a helpful assistant.",
                 user_message="Say 'Hello, LinkedIn Post Generator is ready!' in a friendly way.",
-                max_tokens=100
+                max_tokens=100,
             )
 
             print("\n📝 Test Response:")

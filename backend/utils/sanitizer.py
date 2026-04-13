@@ -2,6 +2,7 @@
 Input sanitization utilities.
 Strips common injection vectors before content reaches the Claude API system prompt.
 """
+
 import re
 
 # Remove <script> ... </script> blocks — handles optional whitespace inside tag (P-20)

@@ -2,9 +2,11 @@
 Content Generation Agent
 Handles LinkedIn post generation with engagement optimization
 """
-from typing import Dict, List, Optional
-import uuid
+
 import json
+import uuid
+from typing import Optional
+
 from services.claude_service import ClaudeService
 
 
@@ -190,7 +192,7 @@ Return your response as JSON with the following structure containing ALL THREE v
 
 Now generate all three variants from the provided content."""
 
-    async def generate_post(self, processed_inputs: List[Dict]) -> Dict:
+    async def generate_post(self, processed_inputs: list[dict]) -> dict:
         """
         Generate optimized LinkedIn post from processed inputs
 
@@ -208,7 +210,7 @@ Now generate all three variants from the provided content."""
             system_prompt=self.system_prompt,
             user_message=user_message,
             max_tokens=2000,
-            temperature=1.0
+            temperature=1.0,
         )
 
         # Parse JSON response
@@ -241,10 +243,10 @@ Now generate all three variants from the provided content."""
                 "hook_strength": "Moderate",
                 "suggestions": ["Could not parse structured output"],
                 "cta": "Engage with this post",
-                "image_alt_text": ""
+                "image_alt_text": "",
             }
 
-    async def generate_variants(self, processed_inputs: List[Dict]) -> List[Dict]:
+    async def generate_variants(self, processed_inputs: list[dict]) -> list[dict]:
         """
         Generate 3 distinct post variants in a single API call.
 
@@ -262,7 +264,7 @@ Now generate all three variants from the provided content."""
             system_prompt=self._build_variant_system_prompt(),
             user_message=user_message,
             max_tokens=4000,
-            temperature=1.0
+            temperature=1.0,
         )
 
         # Parse JSON response
@@ -300,7 +302,7 @@ Now generate all three variants from the provided content."""
             # Pad to exactly 3 variants using fallback if the model returned fewer
             if len(variants) < 3:
                 fallbacks = self._fallback_variants("")
-                variants = variants + fallbacks[len(variants):]
+                variants = variants + fallbacks[len(variants) :]
 
             return variants[:3]
 
@@ -310,7 +312,7 @@ Now generate all three variants from the provided content."""
             # Return fallback variants
             return self._fallback_variants(response)
 
-    def _fallback_variants(self, raw_response: str) -> List[Dict]:
+    def _fallback_variants(self, raw_response: str) -> list[dict]:
         """Generate fallback variants when JSON parsing fails."""
         personalities = [
             {"personality": "bold", "label": "Bold Approach"},
@@ -318,21 +320,23 @@ Now generate all three variants from the provided content."""
             {"personality": "provocative", "label": "Provocative Approach"},
         ]
         variants = []
-        for i, p in enumerate(personalities):
-            variants.append({
-                "id": str(uuid.uuid4()),
-                "personality": p["personality"],
-                "label": p["label"],
-                "post": raw_response.replace("\\n", "\n").strip()[:2000],
-                "hashtags": ["LinkedIn", "Content", "Professional"],
-                "engagement_score": 7.0,
-                "hook_strength": "Moderate",
-                "suggestions": ["Could not parse structured output"],
-                "cta": "Engage with this post"
-            })
+        for _i, p in enumerate(personalities):
+            variants.append(
+                {
+                    "id": str(uuid.uuid4()),
+                    "personality": p["personality"],
+                    "label": p["label"],
+                    "post": raw_response.replace("\\n", "\n").strip()[:2000],
+                    "hashtags": ["LinkedIn", "Content", "Professional"],
+                    "engagement_score": 7.0,
+                    "hook_strength": "Moderate",
+                    "suggestions": ["Could not parse structured output"],
+                    "cta": "Engage with this post",
+                }
+            )
         return variants
 
-    def _format_inputs_for_generation(self, processed_inputs: List[Dict]) -> str:
+    def _format_inputs_for_generation(self, processed_inputs: list[dict]) -> str:
         """
         Format processed inputs into user message for Claude
 
@@ -360,12 +364,16 @@ Now generate all three variants from the provided content."""
                 message_parts.append(f"\n**Source Type:** {inp['type']}")
                 message_parts.append(f"**Content:**\n{inp['content']}\n")
 
-        message_parts.append("\nSynthesize all content above and create a compelling LinkedIn post that drives engagement.")
-        message_parts.append("\nIMPORTANT FOR HASHTAGS: Analyze the specific topics, industries, and themes in this content. Generate 3-5 highly relevant, specific hashtags that directly relate to the content's subject matter. Avoid generic hashtags like #Business, #Success, #Content, #Professional, #LinkedIn. Instead, use precise industry/topic hashtags.")
+        message_parts.append(
+            "\nSynthesize all content above and create a compelling LinkedIn post that drives engagement."
+        )
+        message_parts.append(
+            "\nIMPORTANT FOR HASHTAGS: Analyze the specific topics, industries, and themes in this content. Generate 3-5 highly relevant, specific hashtags that directly relate to the content's subject matter. Avoid generic hashtags like #Business, #Success, #Content, #Professional, #LinkedIn. Instead, use precise industry/topic hashtags."
+        )
 
         return "\n".join(message_parts)
 
-    async def refine_post(self, post_text: str, feedback: str) -> Dict:
+    async def refine_post(self, post_text: str, feedback: str) -> dict:
         """
         Refine existing post based on conversational feedback
 
@@ -379,7 +387,7 @@ Now generate all three variants from the provided content."""
         conversation = [
             {
                 "role": "user",
-                "content": f"Here's my current LinkedIn post:\n\n{post_text}\n\nI want to refine it based on feedback: {feedback}\n\nPlease apply the requested changes and return the improved post in the EXACT same JSON format you used initially, with these fields:\n- post_text: the refined post content\n- hashtags: array of relevant hashtags\n- engagement_score: score from 0-10\n- hook_strength: Weak/Moderate/Strong/Exceptional\n- suggestions: array of further improvement suggestions\n\nReturn ONLY the JSON, no other text."
+                "content": f"Here's my current LinkedIn post:\n\n{post_text}\n\nI want to refine it based on feedback: {feedback}\n\nPlease apply the requested changes and return the improved post in the EXACT same JSON format you used initially, with these fields:\n- post_text: the refined post content\n- hashtags: array of relevant hashtags\n- engagement_score: score from 0-10\n- hook_strength: Weak/Moderate/Strong/Exceptional\n- suggestions: array of further improvement suggestions\n\nReturn ONLY the JSON, no other text.",
             }
         ]
 
@@ -387,7 +395,7 @@ Now generate all three variants from the provided content."""
             system_prompt=self.system_prompt,
             conversation_history=conversation,
             max_tokens=2000,
-            temperature=1.0
+            temperature=1.0,
         )
 
         # Parse JSON response (same cleaning as generate_post)
@@ -419,7 +427,7 @@ Now generate all three variants from the provided content."""
                 "engagement_score": 7.0,
                 "hook_strength": "Moderate",
                 "suggestions": ["Could not parse structured output"],
-                "changes": [feedback]
+                "changes": [feedback],
             }
 
     async def refine_variant(
@@ -427,8 +435,8 @@ Now generate all three variants from the provided content."""
         post_text: str,
         feedback: str,
         personality: Optional[str] = None,
-        label: Optional[str] = None
-    ) -> Dict:
+        label: Optional[str] = None,
+    ) -> dict:
         """
         Refine a specific variant while preserving its personality.
 
@@ -449,7 +457,7 @@ Now generate all three variants from the provided content."""
         conversation = [
             {
                 "role": "user",
-                "content": f"""Here's my current LinkedIn post ({personality or 'default'} style):
+                "content": f"""Here's my current LinkedIn post ({personality or "default"} style):
 
 {post_text}
 
@@ -457,14 +465,14 @@ I want to refine it based on feedback: {feedback}
 
 {personality_context}
 
-Please apply the requested changes while maintaining the {personality or 'original'} personality and style. Return the improved post in JSON format:
+Please apply the requested changes while maintaining the {personality or "original"} personality and style. Return the improved post in JSON format:
 - post_text: the refined post content
 - hashtags: array of relevant hashtags
 - engagement_score: score from 0-10
 - hook_strength: Weak/Moderate/Strong/Exceptional
 - suggestions: array of further improvement suggestions
 
-Return ONLY the JSON, no other text."""
+Return ONLY the JSON, no other text.""",
             }
         ]
 
@@ -472,7 +480,7 @@ Return ONLY the JSON, no other text."""
             system_prompt=self.system_prompt,
             conversation_history=conversation,
             max_tokens=2000,
-            temperature=1.0
+            temperature=1.0,
         )
 
         # Parse JSON response
@@ -507,7 +515,7 @@ Return ONLY the JSON, no other text."""
                 "suggestions": ["Could not parse structured output"],
                 "changes": [feedback],
                 "personality": personality or "unknown",
-                "label": label or "Approach"
+                "label": label or "Approach",
             }
 
     def _get_personality_context(self, personality: str) -> str:
@@ -530,6 +538,6 @@ Return ONLY the JSON, no other text."""
 - Maintain the surprising, contrarian angle
 - Keep the element of surprise or disruption
 - Preserve the tension-and-reveal structure
-- Don't make it too comfortable or safe"""
+- Don't make it too comfortable or safe""",
         }
         return contexts.get(personality, "")
