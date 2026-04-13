@@ -112,8 +112,12 @@ async def health_check():
                 status_code=503, content={"status": "unhealthy", "claude_api": "error"}
             )
         return {"status": "healthy", "claude_api": "connected"}
-    except Exception as e:
-        return JSONResponse(status_code=503, content={"status": "unhealthy", "error": str(e)})
+    except Exception:
+        logger.exception("Health check failed while testing Claude API connection")
+        return JSONResponse(
+            status_code=503,
+            content={"status": "unhealthy", "error": "Internal server error"},
+        )
 
 
 @app.post("/api/generate")
