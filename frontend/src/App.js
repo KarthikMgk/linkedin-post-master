@@ -1,11 +1,18 @@
 import React, { useState } from 'react';
+import { BrowserRouter, Route, Routes } from 'react-router-dom';
+import { GoogleOAuthProvider } from '@react-oauth/google';
 import './App.css';
+import AccessDenied from './components/auth/AccessDenied';
+import LoginPage from './components/auth/LoginPage';
+import ProtectedRoute from './components/auth/ProtectedRoute';
 import PostGenerator from './components/PostGenerator';
 import PostResult from './components/PostResult';
+import { AuthProvider, useAuth } from './context/AuthProvider';
 
-function App() {
+function MainApp() {
   const [generatedPost, setGeneratedPost] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const { user, logout } = useAuth();
 
   const handlePostGenerated = (result) => {
     setGeneratedPost(result);
@@ -61,12 +68,18 @@ function App() {
               </svg>
               <span>New Post</span>
             </button>
-            <button className="header-btn primary" title="Settings">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor">
-                <circle cx="8" cy="8" r="3" strokeWidth="1.5"/>
-                <path d="M8 1v2m0 10v2M15 8h-2M3 8H1m11.5-5.5l-1.4 1.4M5.9 10.1l-1.4 1.4m9-1.4l-1.4-1.4M5.9 5.9L4.5 4.5" strokeWidth="1.5" strokeLinecap="round"/>
-              </svg>
-            </button>
+            {user && (
+              <button className="header-btn secondary" onClick={logout} title={`Logout ${user.email}`}>
+                {user.picture && (
+                  <img
+                    src={user.picture}
+                    alt={user.name}
+                    style={{ width: 20, height: 20, borderRadius: '50%' }}
+                  />
+                )}
+                <span>Logout</span>
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -99,6 +112,29 @@ function App() {
         <p>Powered by Claude AI • Built with React & FastAPI</p>
       </footer>
     </div>
+  );
+}
+
+function App() {
+  return (
+    <GoogleOAuthProvider clientId={process.env.REACT_APP_GOOGLE_CLIENT_ID || ''}>
+      <AuthProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/access-denied" element={<AccessDenied />} />
+            <Route
+              path="/*"
+              element={
+                <ProtectedRoute>
+                  <MainApp />
+                </ProtectedRoute>
+              }
+            />
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
+    </GoogleOAuthProvider>
   );
 }
 

@@ -2,6 +2,12 @@ import axios from 'axios';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
+// Auth token injector — set by AuthProvider after each token change
+let _getToken = () => null;
+export const setTokenProvider = (fn) => {
+  _getToken = fn;
+};
+
 /**
  * 90 s client-side timeout — 3-variant generation with Sonnet 4.6 can take 60–80 s.
  * Story 1.4 AC5 originally specified 35 s (written for single-variant). Amended to 90 s
@@ -43,6 +49,13 @@ export const handleApiError = (error) => {
 
 apiClient.interceptors.response.use((response) => response, handleApiError);
 
+// Attach JWT to every outgoing request
+apiClient.interceptors.request.use((config) => {
+  const token = _getToken();
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
 // ---------------------------------------------------------------------------
 
 const apiService = {
@@ -80,6 +93,14 @@ const apiService = {
     const response = await apiClient.post('/api/refine', formData, {
       timeout: GENERATION_TIMEOUT_MS,
     });
+    return response.data;
+  },
+
+  /**
+   * Exchange a Google id_token for an application JWT.
+   */
+  async loginWithGoogle(googleToken) {
+    const response = await apiClient.post('/api/auth/google', { token: googleToken });
     return response.data;
   },
 
