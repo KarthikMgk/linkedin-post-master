@@ -5,6 +5,10 @@ Sets up environment variables BEFORE importing the app to prevent
 ClaudeService from failing due to missing ANTHROPIC_API_KEY.
 """
 
+
+
+
+
 import os
 import sys
 
