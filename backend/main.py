@@ -8,12 +8,20 @@ import time
 from typing import Any, Optional
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from agents.content_agent import ContentGenerationAgent
+from auth.allowlist import is_allowed
+from auth.google_auth import verify_google_token
+from auth.jwt_handler import create_jwt
+from middleware.auth_middleware import require_auth
 from services.claude_service import ClaudeService
 from services.input_processor import InputProcessor
 from utils.exceptions import InvalidFileError, RateLimitError, ServiceUnavailableError
@@ -24,15 +32,25 @@ load_dotenv()
 
 logger = get_logger(__name__)
 
+# Warn loudly at startup if required auth env vars are missing
+_REQUIRED_AUTH_VARS = ["GOOGLE_CLIENT_ID", "ALLOWED_EMAILS", "JWT_SECRET"]
+for _var in _REQUIRED_AUTH_VARS:
+    if not os.getenv(_var, "").strip():
+        logger.warning("Auth env var %s is not set — login will fail until configured.", _var)
+
 app = FastAPI(
     title="LinkedIn Post Generator API",
     description="AI-powered LinkedIn post generation with multi-input synthesis",
     version="0.1.0",
 )
 
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 # CORS — FRONTEND_URL is a comma-separated list so both the Vercel production
 # domain and localhost can be allowed simultaneously without wildcards.
-# P-6: fall back to localhost if env var is unset or empty.
+# Fall back to localhost if env var is unset or empty.
 _allowed_origins = [
     url.strip() for url in os.getenv("FRONTEND_URL", "").split(",") if url.strip()
 ] or ["http://localhost:3000"]
@@ -41,7 +59,7 @@ app.add_middleware(
     allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["*"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 # Initialize services
@@ -50,8 +68,12 @@ input_processor = InputProcessor()
 content_agent = ContentGenerationAgent(claude_service)
 
 
+class GoogleAuthRequest(BaseModel):
+    token: str
+
+
 # ---------------------------------------------------------------------------
-# Centralised error response helpers
+# Centralised error response helper
 # ---------------------------------------------------------------------------
 
 
@@ -98,13 +120,12 @@ async def validation_exception_handler(
 
 @app.get("/")
 async def root():
-    """Health check endpoint"""
     return {"status": "running", "service": "LinkedIn Post Generator API", "version": "0.1.0"}
 
 
 @app.get("/api/health")
 async def health_check():
-    """Detailed health check with API connectivity"""
+    """Public health check — no auth required."""
     try:
         api_status = await claude_service.test_connection()
         if not api_status:
@@ -120,8 +141,66 @@ async def health_check():
         )
 
 
+# ---------------------------------------------------------------------------
+# Auth endpoints
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/auth/google")
+@limiter.limit("10/minute")
+async def auth_google(request: Request, body: GoogleAuthRequest):
+    """
+    Exchange a Google id_token for an application JWT.
+    Rate limited to 10 requests/minute per IP.
+    """
+    try:
+        payload = verify_google_token(body.token)
+    except ValueError as exc:
+        # Log the real reason so it shows in backend logs
+        logger.warning("Google token verification failed: %s", exc)
+        return _error_response(401, "INVALID_TOKEN", str(exc))
+
+    email = payload.get("email", "")
+    if not is_allowed(email):
+        logger.info("Access denied for email: %s", email)
+        return _error_response(403, "ACCESS_DENIED", "Access denied. This app is invite-only.")
+
+    try:
+        token = create_jwt(
+            email=email,
+            name=payload.get("name", ""),
+            picture=payload.get("picture", ""),
+        )
+    except RuntimeError as exc:
+        logger.error("JWT creation failed: %s", exc)
+        return _error_response(500, "SERVER_ERROR", str(exc))
+
+    logger.info("Auth success: %s", email)
+    return {
+        "success": True,
+        "token": token,
+        "user": {
+            "email": email,
+            "name": payload.get("name", ""),
+            "picture": payload.get("picture", ""),
+        },
+    }
+
+
+@app.get("/api/auth/me")
+async def auth_me(email: str = Depends(require_auth)):
+    """Return current user info. Quota info added in Story 5.3."""
+    return {"success": True, "email": email}
+
+
+# ---------------------------------------------------------------------------
+# Generation endpoints (auth required)
+# ---------------------------------------------------------------------------
+
+
 @app.post("/api/generate")
 async def generate_post(
+    email: str = Depends(require_auth),
     text_input: Optional[str] = Form(default=None),
     pdf_file: Optional[UploadFile] = File(default=None),
     image_files: list[UploadFile] = File(default=[]),
@@ -129,6 +208,7 @@ async def generate_post(
 ):
     """
     Generate optimized LinkedIn post from multiple input sources.
+    Requires a valid JWT (issued by /api/auth/google).
     """
     start_time = time.monotonic()
     try:
@@ -148,18 +228,17 @@ async def generate_post(
             url=url_input,
         )
 
-        # Generate 3 variants (Story 2.1)
         variants = await content_agent.generate_variants(processed_inputs)
 
         if not variants:
             raise HTTPException(status_code=500, detail="Content generation returned no variants")
 
-        # Get first variant for backward compatibility (single-variant consumers)
         first_variant = variants[0]
 
         elapsed_ms = int((time.monotonic() - start_time) * 1000)
         logger.info(
-            "POST /api/generate - inputs: %d, time: %dms, score: %s",
+            "POST /api/generate - user: %s, inputs: %d, time: %dms, score: %s",
+            email,
             len(processed_inputs),
             elapsed_ms,
             first_variant.get("engagement_score", "n/a"),
@@ -167,7 +246,6 @@ async def generate_post(
 
         return {
             "success": True,
-            # Backward compatibility: top-level fields from first variant
             "post": first_variant.get("post", ""),
             "hashtags": first_variant.get("hashtags", []),
             "engagement_score": first_variant.get("engagement_score", 0),
@@ -175,7 +253,6 @@ async def generate_post(
             "suggestions": first_variant.get("suggestions", []),
             "cta": first_variant.get("cta", ""),
             "image_alt_text": first_variant.get("image_alt_text", ""),
-            # Story 2.1: new variants array
             "variants": variants,
             "metadata": {
                 "inputs_processed": len(processed_inputs),
@@ -187,9 +264,7 @@ async def generate_post(
         raise
     except InvalidFileError as e:
         elapsed_ms = int((time.monotonic() - start_time) * 1000)
-        logger.error(
-            "Invalid file in generate request (%dms): %s", elapsed_ms, str(e), exc_info=True
-        )
+        logger.error("Invalid file in generate request (%dms): %s", elapsed_ms, str(e), exc_info=True)
         return _error_response(400, "INVALID_FILE", str(e))
     except RateLimitError as e:
         elapsed_ms = int((time.monotonic() - start_time) * 1000)
@@ -202,20 +277,17 @@ async def generate_post(
         )
     except ServiceUnavailableError as e:
         elapsed_ms = int((time.monotonic() - start_time) * 1000)
-        logger.error(
-            "Service unavailable in generate request (%dms): %s", elapsed_ms, str(e), exc_info=True
-        )
+        logger.error("Service unavailable in generate request (%dms): %s", elapsed_ms, str(e), exc_info=True)
         return _error_response(503, "SERVICE_UNAVAILABLE", str(e))
     except Exception as e:
         elapsed_ms = int((time.monotonic() - start_time) * 1000)
-        logger.error(
-            "Unhandled error in generate request (%dms): %s", elapsed_ms, str(e), exc_info=True
-        )
+        logger.error("Unhandled error in generate request (%dms): %s", elapsed_ms, str(e), exc_info=True)
         raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}") from e
 
 
 @app.post("/api/refine")
 async def refine_post(
+    email: str = Depends(require_auth),
     post_text: str = Form(...),
     feedback: str = Form(...),
     variant_id: Optional[str] = Form(default=None),
@@ -225,8 +297,8 @@ async def refine_post(
     """
     Refine existing post based on conversational feedback.
     Supports variant-specific refinement (Story 2.1 AC3).
+    Requires a valid JWT.
     """
-    # P-14: validate personality against allowed values
     _VALID_PERSONALITIES = {"bold", "structured", "provocative"}
     if personality and personality not in _VALID_PERSONALITIES:
         raise HTTPException(
@@ -236,7 +308,6 @@ async def refine_post(
 
     start_time = time.monotonic()
     try:
-        # If personality provided, use variant-specific refinement (Story 2.1)
         if personality:
             refined_result = await content_agent.refine_variant(
                 post_text, feedback, personality, label
@@ -246,7 +317,8 @@ async def refine_post(
 
         elapsed_ms = int((time.monotonic() - start_time) * 1000)
         logger.info(
-            "POST /api/refine - time: %dms, score: %s, personality: %s",
+            "POST /api/refine - user: %s, time: %dms, score: %s, personality: %s",
+            email,
             elapsed_ms,
             refined_result.get("engagement_score", "n/a"),
             refined_result.get("personality", "default"),
@@ -263,7 +335,6 @@ async def refine_post(
             "cta": refined_result.get("cta", ""),
         }
 
-        # Story 2.1 AC3: preserve personality and label
         if personality:
             response["personality"] = refined_result.get("personality", personality)
             response["label"] = refined_result.get("label", label)
@@ -281,15 +352,11 @@ async def refine_post(
         )
     except ServiceUnavailableError as e:
         elapsed_ms = int((time.monotonic() - start_time) * 1000)
-        logger.error(
-            "Service unavailable in refine request (%dms): %s", elapsed_ms, str(e), exc_info=True
-        )
+        logger.error("Service unavailable in refine request (%dms): %s", elapsed_ms, str(e), exc_info=True)
         return _error_response(503, "SERVICE_UNAVAILABLE", str(e))
     except Exception as e:
         elapsed_ms = int((time.monotonic() - start_time) * 1000)
-        logger.error(
-            "Unhandled error in refine request (%dms): %s", elapsed_ms, str(e), exc_info=True
-        )
+        logger.error("Unhandled error in refine request (%dms): %s", elapsed_ms, str(e), exc_info=True)
         raise HTTPException(status_code=500, detail=f"Refinement failed: {str(e)}") from e
 
 

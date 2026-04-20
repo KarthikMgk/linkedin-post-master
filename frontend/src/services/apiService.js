@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8001';
 
 /**
  * 90 s client-side timeout — 3-variant generation with Sonnet 4.6 can take 60–80 s.
@@ -11,28 +11,60 @@ export const GENERATION_TIMEOUT_MS = 90000;
 
 const apiClient = axios.create({ baseURL: API_BASE_URL });
 
+// ---------------------------------------------------------------------------
+// Auth token injection
+// Token is stored in AuthProvider memory (never localStorage).
+// AuthProvider calls setTokenProvider(() => token) whenever token changes.
+// ---------------------------------------------------------------------------
+
+let _getToken = () => null;
+
+export const setTokenProvider = (fn) => {
+  _getToken = fn;
+};
+
+// Attach JWT to every outgoing request when a token is available
+apiClient.interceptors.request.use((config) => {
+  const token = _getToken();
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// ---------------------------------------------------------------------------
+// Response error handler
+// ---------------------------------------------------------------------------
+
 /**
  * Centralised Axios response-error handler (AC2, AC3, AC5 — Story 1.4).
  * Exported so it can be unit-tested in isolation.
  */
 export const handleApiError = (error) => {
-  // AC5: client-side timeout
+  // Client-side timeout
   if (error.code === 'ECONNABORTED') {
     return Promise.reject(
       new Error('Generation is taking longer than expected. Please try again.')
     );
   }
 
-  // AC3: network / connection refused — no HTTP response at all
+  // Network error — no HTTP response at all
   if (!error.response) {
     return Promise.reject(
-      new Error(
-        'Unable to connect to the server. Please check your connection and try again.'
-      )
+      new Error('Unable to connect to the server. Please check your connection and try again.')
     );
   }
 
-  // AC2: structured error format from Story 1.2 backend
+  // 401 — session expired, redirect to login
+  if (error.response.status === 401) {
+    // Clear the token by triggering a page reload to /login
+    // AuthProvider's in-memory token is lost on reload, which is intentional
+    if (window.location.pathname !== '/login') {
+      window.location.href = '/login';
+    }
+  }
+
+  // Extract the structured error message from backend _error_response format
   const message =
     error.response?.data?.error?.message ||
     error.response?.data?.detail ||
@@ -44,8 +76,19 @@ export const handleApiError = (error) => {
 apiClient.interceptors.response.use((response) => response, handleApiError);
 
 // ---------------------------------------------------------------------------
+// API service methods
+// ---------------------------------------------------------------------------
 
 const apiService = {
+  /**
+   * Exchange a Google id_token for an application JWT.
+   * Called by AuthProvider.login().
+   */
+  async loginWithGoogle(googleToken) {
+    const response = await apiClient.post('/api/auth/google', { token: googleToken });
+    return response.data;
+  },
+
   /**
    * Generate LinkedIn post from inputs.
    */
