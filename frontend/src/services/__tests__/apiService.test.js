@@ -16,7 +16,10 @@ jest.mock('axios', () => {
   mockAxiosInstance = {
     post: jest.fn(),
     get: jest.fn(),
-    interceptors: { response: { use: jest.fn() } },
+    interceptors: {
+      request: { use: jest.fn() },
+      response: { use: jest.fn() },
+    },
   };
   return { create: jest.fn(() => mockAxiosInstance) };
 });

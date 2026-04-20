@@ -5,12 +5,22 @@ Sets up environment variables BEFORE importing the app to prevent
 ClaudeService from failing due to missing ANTHROPIC_API_KEY.
 """
 
+
+
+
+
+
+
 import os
 import sys
 
 # Set test environment variables BEFORE any app module imports
 os.environ.setdefault("ANTHROPIC_API_KEY", "test-api-key-for-testing")
 os.environ.setdefault("FRONTEND_URL", "http://localhost:3000")
+# Auth vars — dummy values so startup warnings are suppressed and jwt_handler doesn't crash
+os.environ.setdefault("GOOGLE_CLIENT_ID", "test-client-id.apps.googleusercontent.com")
+os.environ.setdefault("ALLOWED_EMAILS", "test@example.com")
+os.environ.setdefault("JWT_SECRET", "test-secret-for-testing-only")
 
 # Add backend root to sys.path so imports like `from main import app` work
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -22,6 +32,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from main import app
+from middleware.auth_middleware import require_auth
 
 # ---------------------------------------------------------------------------
 # Shared mock payloads
@@ -103,8 +114,13 @@ MOCK_REFINE_RESULT = {
 
 @pytest.fixture
 def client():
-    """FastAPI TestClient — handles async endpoints synchronously."""
-    return TestClient(app)
+    """
+    FastAPI TestClient with auth dependency overridden.
+    Bypasses JWT validation so tests focus on business logic, not auth.
+    """
+    app.dependency_overrides[require_auth] = lambda: "test@example.com"
+    yield TestClient(app)
+    app.dependency_overrides.clear()
 
 
 @pytest.fixture

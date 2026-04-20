@@ -1,11 +1,22 @@
 import React, { useState } from 'react';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { GoogleOAuthProvider } from '@react-oauth/google';
 import './App.css';
+import AccessDenied from './components/auth/AccessDenied';
+import LoginPage from './components/auth/LoginPage';
+import ProtectedRoute from './components/auth/ProtectedRoute';
 import PostGenerator from './components/PostGenerator';
 import PostResult from './components/PostResult';
+import { AuthProvider, useAuth } from './context/AuthProvider';
 
-function App() {
+// ---------------------------------------------------------------------------
+// Main app shell — only rendered when authenticated
+// ---------------------------------------------------------------------------
+
+function MainApp() {
   const [generatedPost, setGeneratedPost] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const { user, logout } = useAuth();
 
   const handlePostGenerated = (result) => {
     setGeneratedPost(result);
@@ -35,9 +46,18 @@ function App() {
             <div className="logo">
               <div className="logo-icon">
                 <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-                  <rect width="32" height="32" rx="8" fill="#0A66C2"/>
-                  <path d="M8 12L16 8L24 12V20L16 24L8 20V12Z" fill="white" fillOpacity="0.9"/>
-                  <path d="M16 8V16M16 16L24 12M16 16L8 12" stroke="#0A66C2" strokeWidth="1.5" strokeLinecap="round"/>
+                  <rect width="32" height="32" rx="8" fill="#0A66C2" />
+                  <path
+                    d="M8 12L16 8L24 12V20L16 24L8 20V12Z"
+                    fill="white"
+                    fillOpacity="0.9"
+                  />
+                  <path
+                    d="M16 8V16M16 16L24 12M16 16L8 12"
+                    stroke="#0A66C2"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                  />
                 </svg>
               </div>
               <div className="logo-text">
@@ -55,18 +75,35 @@ function App() {
 
           <div className="header-right">
             <button className="header-btn secondary" onClick={handleNewPost}>
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor">
-                <circle cx="8" cy="8" r="6" strokeWidth="1.5"/>
-                <path d="M8 5v6M5 8h6" strokeWidth="1.5" strokeLinecap="round"/>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+              >
+                <circle cx="8" cy="8" r="6" strokeWidth="1.5" />
+                <path d="M8 5v6M5 8h6" strokeWidth="1.5" strokeLinecap="round" />
               </svg>
               <span>New Post</span>
             </button>
-            <button className="header-btn primary" title="Settings">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor">
-                <circle cx="8" cy="8" r="3" strokeWidth="1.5"/>
-                <path d="M8 1v2m0 10v2M15 8h-2M3 8H1m11.5-5.5l-1.4 1.4M5.9 10.1l-1.4 1.4m9-1.4l-1.4-1.4M5.9 5.9L4.5 4.5" strokeWidth="1.5" strokeLinecap="round"/>
-              </svg>
-            </button>
+
+            {user && (
+              <button
+                className="header-btn secondary"
+                onClick={logout}
+                title={`Signed in as ${user.email} — click to log out`}
+              >
+                {user.picture && (
+                  <img
+                    src={user.picture}
+                    alt={user.name || 'User avatar'}
+                    style={{ width: 20, height: 20, borderRadius: '50%' }}
+                  />
+                )}
+                <span>Logout</span>
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -87,18 +124,46 @@ function App() {
           )}
 
           {generatedPost && !isLoading && (
-            <PostResult
-              result={generatedPost}
-              onReset={handleReset}
-            />
+            <PostResult result={generatedPost} onReset={handleReset} />
           )}
         </div>
       </main>
 
       <footer className="App-footer">
-        <p>Powered by Claude AI • Built with React & FastAPI</p>
+        <p>Powered by Claude AI • Built with React &amp; FastAPI</p>
       </footer>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Root — providers + routing
+// ---------------------------------------------------------------------------
+
+function App() {
+  const googleClientId = process.env.REACT_APP_GOOGLE_CLIENT_ID || '';
+
+  return (
+    <GoogleOAuthProvider clientId={googleClientId}>
+      <AuthProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/access-denied" element={<AccessDenied />} />
+            <Route
+              path="/"
+              element={
+                <ProtectedRoute>
+                  <MainApp />
+                </ProtectedRoute>
+              }
+            />
+            {/* Catch-all: redirect unknown paths to home (which redirects to login if unauthed) */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
+    </GoogleOAuthProvider>
   );
 }
 
