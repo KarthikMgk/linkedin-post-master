@@ -13,6 +13,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+import redis as redis_lib
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -21,7 +22,8 @@ from agents.content_agent import ContentGenerationAgent
 from auth.allowlist import is_allowed
 from auth.google_auth import verify_google_token
 from auth.jwt_handler import create_jwt
-from middleware.auth_middleware import require_auth
+from middleware.auth_middleware import require_auth, require_quota
+from services import quota_service
 from services.claude_service import ClaudeService
 from services.input_processor import InputProcessor
 from utils.exceptions import InvalidFileError, RateLimitError, ServiceUnavailableError
@@ -31,6 +33,7 @@ from utils.logger import get_logger
 load_dotenv()
 
 logger = get_logger(__name__)
+_DAILY_LIMIT_DEFAULT = int(os.getenv("DAILY_QUOTA_LIMIT", "10"))
 
 # Warn loudly at startup if required auth env vars are missing
 _REQUIRED_AUTH_VARS = ["GOOGLE_CLIENT_ID", "ALLOWED_EMAILS", "JWT_SECRET"]
@@ -60,6 +63,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
+    expose_headers=["X-Quota-Remaining", "X-Quota-Limit"],
 )
 
 # Initialize services
@@ -99,11 +103,16 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
         403: "FORBIDDEN",
         404: "NOT_FOUND",
         422: "VALIDATION_ERROR",
+        429: "QUOTA_EXCEEDED",
         500: "INTERNAL_ERROR",
         503: "SERVICE_UNAVAILABLE",
     }
     code = code_map.get(exc.status_code, "ERROR")
-    return _error_response(exc.status_code, code, exc.detail)
+    resp = _error_response(exc.status_code, code, exc.detail)
+    if exc.status_code == 429:
+        resp.headers["X-Quota-Remaining"] = "0"
+        resp.headers["X-Quota-Limit"] = str(_DAILY_LIMIT_DEFAULT)
+    return resp
 
 
 @app.exception_handler(RequestValidationError)
@@ -189,7 +198,7 @@ async def auth_google(request: Request, body: GoogleAuthRequest):
 
 @app.get("/api/auth/me")
 async def auth_me(email: str = Depends(require_auth)):
-    """Return current user info. Quota info added in Story 5.3."""
+    """Return current user info."""
     return {"success": True, "email": email}
 
 
@@ -200,7 +209,7 @@ async def auth_me(email: str = Depends(require_auth)):
 
 @app.post("/api/generate")
 async def generate_post(
-    email: str = Depends(require_auth),
+    email: str = Depends(require_quota),
     text_input: Optional[str] = Form(default=None),
     pdf_file: Optional[UploadFile] = File(default=None),
     image_files: list[UploadFile] = File(default=[]),
@@ -244,7 +253,14 @@ async def generate_post(
             first_variant.get("engagement_score", "n/a"),
         )
 
-        return {
+        # Increment quota AFTER successful generation (failed calls don't count)
+        quota_remaining = _DAILY_LIMIT_DEFAULT
+        try:
+            quota_remaining = quota_service.check_and_increment(email)
+        except (redis_lib.RedisError, ValueError) as e:
+            logger.warning("Quota increment failed post-generation: %s", str(e))
+
+        response_data = {
             "success": True,
             "post": first_variant.get("post", ""),
             "hashtags": first_variant.get("hashtags", []),
@@ -259,6 +275,10 @@ async def generate_post(
                 "primary_source": processed_inputs[0]["type"] if processed_inputs else None,
             },
         }
+        resp = JSONResponse(content=response_data)
+        resp.headers["X-Quota-Remaining"] = str(quota_remaining)
+        resp.headers["X-Quota-Limit"] = str(_DAILY_LIMIT_DEFAULT)
+        return resp
 
     except HTTPException:
         raise
@@ -287,7 +307,7 @@ async def generate_post(
 
 @app.post("/api/refine")
 async def refine_post(
-    email: str = Depends(require_auth),
+    email: str = Depends(require_quota),
     post_text: str = Form(...),
     feedback: str = Form(...),
     variant_id: Optional[str] = Form(default=None),
@@ -324,7 +344,14 @@ async def refine_post(
             refined_result.get("personality", "default"),
         )
 
-        response = {
+        # Increment quota AFTER successful refinement (failed calls don't count)
+        quota_remaining = _DAILY_LIMIT_DEFAULT
+        try:
+            quota_remaining = quota_service.check_and_increment(email)
+        except (redis_lib.RedisError, ValueError) as e:
+            logger.warning("Quota increment failed post-refine: %s", str(e))
+
+        response_data = {
             "success": True,
             "refined_post": refined_result["post_text"],
             "changes_made": refined_result.get("changes", []),
@@ -336,10 +363,13 @@ async def refine_post(
         }
 
         if personality:
-            response["personality"] = refined_result.get("personality", personality)
-            response["label"] = refined_result.get("label", label)
+            response_data["personality"] = refined_result.get("personality", personality)
+            response_data["label"] = refined_result.get("label", label)
 
-        return response
+        resp = JSONResponse(content=response_data)
+        resp.headers["X-Quota-Remaining"] = str(quota_remaining)
+        resp.headers["X-Quota-Limit"] = str(_DAILY_LIMIT_DEFAULT)
+        return resp
 
     except RateLimitError as e:
         elapsed_ms = int((time.monotonic() - start_time) * 1000)

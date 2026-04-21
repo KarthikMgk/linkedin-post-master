@@ -18,9 +18,14 @@ const apiClient = axios.create({ baseURL: API_BASE_URL });
 // ---------------------------------------------------------------------------
 
 let _getToken = () => null;
+let _updateQuota = null;
 
 export const setTokenProvider = (fn) => {
   _getToken = fn;
+};
+
+export const setQuotaUpdater = (fn) => {
+  _updateQuota = fn;
 };
 
 // Attach JWT to every outgoing request when a token is available
@@ -73,7 +78,18 @@ export const handleApiError = (error) => {
   return Promise.reject(new Error(message));
 };
 
-apiClient.interceptors.response.use((response) => response, handleApiError);
+apiClient.interceptors.response.use(
+  (response) => {
+    // Read quota headers (axios lowercases all header names)
+    const remaining = response.headers['x-quota-remaining'];
+    const limit = response.headers['x-quota-limit'];
+    if (remaining !== undefined && _updateQuota) {
+      _updateQuota(parseInt(remaining, 10), parseInt(limit || '10', 10));
+    }
+    return response;
+  },
+  handleApiError
+);
 
 // ---------------------------------------------------------------------------
 // API service methods

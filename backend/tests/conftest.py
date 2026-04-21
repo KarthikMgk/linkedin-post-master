@@ -32,7 +32,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from main import app
-from middleware.auth_middleware import require_auth
+from middleware.auth_middleware import require_auth, require_quota
 
 # ---------------------------------------------------------------------------
 # Shared mock payloads
@@ -115,10 +115,11 @@ MOCK_REFINE_RESULT = {
 @pytest.fixture
 def client():
     """
-    FastAPI TestClient with auth dependency overridden.
-    Bypasses JWT validation so tests focus on business logic, not auth.
+    FastAPI TestClient with auth and quota dependencies overridden.
+    Bypasses JWT validation and Redis quota checks so tests focus on business logic.
     """
     app.dependency_overrides[require_auth] = lambda: "test@example.com"
+    app.dependency_overrides[require_quota] = lambda: "test@example.com"
     yield TestClient(app)
     app.dependency_overrides.clear()
 

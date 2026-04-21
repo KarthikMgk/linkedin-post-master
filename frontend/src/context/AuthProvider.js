@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import apiService, { setTokenProvider } from '../services/apiService';
+import apiService, { setQuotaUpdater, setTokenProvider } from '../services/apiService';
 
 const AuthContext = createContext(null);
 
@@ -34,6 +34,12 @@ export function AuthProvider({ children }) {
     setQuotaRemaining(remaining);
     setQuotaLimit(limit);
   }, []);
+
+  // Wire quota updater so response interceptor can push header values into context
+  // Must come after updateQuota is defined
+  useEffect(() => {
+    setQuotaUpdater(updateQuota);
+  }, [updateQuota]);
 
   return (
     <AuthContext.Provider
