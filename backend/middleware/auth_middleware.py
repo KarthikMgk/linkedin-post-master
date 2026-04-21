@@ -1,6 +1,5 @@
 """FastAPI auth and quota dependency injection."""
 import logging
-import os
 
 import jwt as pyjwt
 import redis as redis_lib
@@ -56,11 +55,10 @@ async def require_quota(email: str = Depends(require_auth)) -> str:
         )
 
     if remaining <= 0:
-        limit = int(os.getenv("DAILY_QUOTA_LIMIT", "10"))
         raise HTTPException(
             status_code=429,
             detail=(
-                f"Daily quota exceeded. You've used all {limit} generations "
+                f"Daily quota exceeded. You've used all {quota_service.DAILY_LIMIT} generations "
                 "for today. Try again tomorrow."
             ),
         )

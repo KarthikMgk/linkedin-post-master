@@ -13,6 +13,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+import redis as redis_lib
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -21,8 +22,6 @@ from agents.content_agent import ContentGenerationAgent
 from auth.allowlist import is_allowed
 from auth.google_auth import verify_google_token
 from auth.jwt_handler import create_jwt
-import redis as redis_lib
-
 from middleware.auth_middleware import require_auth, require_quota
 from services import quota_service
 from services.claude_service import ClaudeService
@@ -112,7 +111,7 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
     resp = _error_response(exc.status_code, code, exc.detail)
     if exc.status_code == 429:
         resp.headers["X-Quota-Remaining"] = "0"
-        resp.headers["X-Quota-Limit"] = str(os.getenv("DAILY_QUOTA_LIMIT", "10"))
+        resp.headers["X-Quota-Limit"] = str(_DAILY_LIMIT_DEFAULT)
     return resp
 
 
@@ -199,7 +198,7 @@ async def auth_google(request: Request, body: GoogleAuthRequest):
 
 @app.get("/api/auth/me")
 async def auth_me(email: str = Depends(require_auth)):
-    """Return current user info. Quota info added in Story 5.3."""
+    """Return current user info."""
     return {"success": True, "email": email}
 
 

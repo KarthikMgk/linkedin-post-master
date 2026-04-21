@@ -69,8 +69,8 @@ def check_and_increment(email: str) -> int:
     current_before = int(results[0]) if results[0] else 0
     new_count = int(results[1])
 
-    if current_before >= DAILY_LIMIT:
-        # Race: two requests passed require_quota simultaneously — roll back
+    if new_count > DAILY_LIMIT:
+        # Race: two requests slipped past require_quota simultaneously — roll back
         _redis.decr(key)
         raise ValueError(f"Quota already exhausted for {email}")
 
