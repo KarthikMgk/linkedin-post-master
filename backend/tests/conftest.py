@@ -50,6 +50,13 @@ MOCK_GENERATION_RESULT = {
     "cta": "What's your experience with AI agents?",
 }
 
+_MOCK_INTELLIGENCE = {
+    "hook_strength": {"rating": "Strong", "reason": "Opens with a challenge to conventional wisdom"},
+    "cta_clarity": {"status": "clear", "suggestion": "Direct question invites comments effectively"},
+    "optimal_posting_time": {"time": "Tuesday 10am UTC", "reason": "B2B tech content peaks mid-morning"},
+    "length_assessment": {"status": "optimal", "char_count": 100},
+}
+
 # Mock result for generate_variants (list of 3 variant dicts)
 MOCK_VARIANTS_RESULT = [
     {
@@ -65,6 +72,7 @@ MOCK_VARIANTS_RESULT = [
         "hook_strength": "Strong",
         "suggestions": ["Add a specific data point", "End with a question"],
         "cta": "What's your experience with AI agents?",
+        "intelligence": _MOCK_INTELLIGENCE,
     },
     {
         "id": "variant-002",
@@ -79,6 +87,7 @@ MOCK_VARIANTS_RESULT = [
         "hook_strength": "Strong",
         "suggestions": ["Add data points"],
         "cta": "Share your thoughts below",
+        "intelligence": _MOCK_INTELLIGENCE,
     },
     {
         "id": "variant-003",
@@ -93,6 +102,7 @@ MOCK_VARIANTS_RESULT = [
         "hook_strength": "Exceptional",
         "suggestions": ["Consider the timing"],
         "cta": "Drop your experiences below",
+        "intelligence": _MOCK_INTELLIGENCE,
     },
 ]
 
@@ -104,6 +114,12 @@ MOCK_REFINE_RESULT = {
     "suggestions": ["Near perfect!"],
     "cta": "Drop your thoughts below",
     "changes": ["make it punchier"],
+    "intelligence": {
+        "hook_strength": {"rating": "Exceptional", "reason": "Reframes AI as colleagues — deeply relatable"},
+        "cta_clarity": {"status": "clear", "suggestion": "Invites sharing — strong community engagement signal"},
+        "optimal_posting_time": {"time": "Tuesday 10am UTC", "reason": "B2B tech content peaks mid-morning"},
+        "length_assessment": {"status": "optimal", "char_count": 87},
+    },
 }
 
 
