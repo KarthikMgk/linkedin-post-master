@@ -16,11 +16,6 @@ export function AuthProvider({ children }) {
     setTokenProvider(() => token);
   }, [token]);
 
-  // Wire quota updater so response interceptor can push header values into context
-  useEffect(() => {
-    setQuotaUpdater(updateQuota);
-  }, [updateQuota]);
-
   const login = useCallback(async (googleCredential) => {
     const data = await apiService.loginWithGoogle(googleCredential);
     setToken(data.token);
@@ -39,6 +34,12 @@ export function AuthProvider({ children }) {
     setQuotaRemaining(remaining);
     setQuotaLimit(limit);
   }, []);
+
+  // Wire quota updater so response interceptor can push header values into context
+  // Must come after updateQuota is defined
+  useEffect(() => {
+    setQuotaUpdater(updateQuota);
+  }, [updateQuota]);
 
   return (
     <AuthContext.Provider
