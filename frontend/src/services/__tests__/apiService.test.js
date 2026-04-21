@@ -210,3 +210,4 @@ test('checkHealth returns error object on failure without throwing', async () =>
   const result = await apiService.checkHealth();
   expect(result.status).toBe('error');
 });
+

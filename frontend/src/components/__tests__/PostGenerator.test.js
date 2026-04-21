@@ -16,9 +16,11 @@ jest.mock('../../services/apiService', () => ({
   },
 }));
 
-// Mock useAuth — quota starts null (not yet populated) so button stays enabled
+// Mutable quota state — can be overridden per-test block
+// Must use `var` so the value is accessible inside the jest.mock hoisted factory
+var mockQuotaRemaining = null;
 jest.mock('../../context/AuthProvider', () => ({
-  useAuth: () => ({ quotaRemaining: null }),
+  useAuth: () => ({ quotaRemaining: mockQuotaRemaining }),
 }));
 
 import apiService from '../../services/apiService';
@@ -285,4 +287,44 @@ test('shows warning when non-image files included in image upload', () => {
   Object.defineProperty(input, 'files', { value: [img, doc], configurable: true });
   fireEvent.change(input);
   expect(screen.getByText(/some files were not valid images/i)).toBeInTheDocument();
+});
+
+// ---------------------------------------------------------------------------
+// AC9 — quota exhausted state (Story 5.3)
+// ---------------------------------------------------------------------------
+
+describe('quota exhausted state', () => {
+  beforeEach(() => {
+    mockQuotaRemaining = 0;
+  });
+
+  afterEach(() => {
+    mockQuotaRemaining = null;
+  });
+
+  test('AC9: Generate button is disabled when quotaRemaining is 0', () => {
+    renderGenerator();
+    expect(screen.getByRole('button', { name: /generate post/i })).toBeDisabled();
+  });
+
+  test('AC9: button has descriptive title when disabled by quota', () => {
+    renderGenerator();
+    const btn = screen.getByRole('button', { name: /generate post/i });
+    expect(btn).toHaveAttribute('title', expect.stringMatching(/daily limit reached/i));
+  });
+});
+
+describe('quota normal state', () => {
+  beforeEach(() => {
+    mockQuotaRemaining = 5;
+  });
+
+  afterEach(() => {
+    mockQuotaRemaining = null;
+  });
+
+  test('Generate button is enabled when quota remaining > 0', () => {
+    renderGenerator();
+    expect(screen.getByRole('button', { name: /generate post/i })).toBeEnabled();
+  });
 });
