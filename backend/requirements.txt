@@ -13,3 +13,5 @@ requests==2.31.0
 google-auth==2.29.0
 PyJWT==2.8.0
 slowapi==0.1.9
+# Quota tracking
+redis[hiredis]==5.2.1

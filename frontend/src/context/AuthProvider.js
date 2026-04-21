@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import apiService, { setTokenProvider } from '../services/apiService';
+import apiService, { setQuotaUpdater, setTokenProvider } from '../services/apiService';
 
 const AuthContext = createContext(null);
 
@@ -15,6 +15,11 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     setTokenProvider(() => token);
   }, [token]);
+
+  // Wire quota updater so response interceptor can push header values into context
+  useEffect(() => {
+    setQuotaUpdater(updateQuota);
+  }, [updateQuota]);
 
   const login = useCallback(async (googleCredential) => {
     const data = await apiService.loginWithGoogle(googleCredential);

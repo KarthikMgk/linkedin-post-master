@@ -343,3 +343,25 @@
   width: 100%;
   box-sizing: border-box;
 }
+
+/* ---- Quota Display (Story 5.3) ---- */
+.quota-display {
+  font-size: 0.85rem;
+  color: var(--gray-500, #6b7280);
+  margin-bottom: 12px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--gray-100, #f3f4f6);
+  display: inline-block;
+}
+
+.quota-display.quota-warning {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.quota-display.quota-exhausted {
+  color: #991b1b;
+  background: #fee2e2;
+  font-weight: 500;
+}

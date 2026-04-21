@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import './PostGenerator.css';
+import { useAuth } from '../context/AuthProvider';
 import apiService from '../services/apiService';
+import QuotaDisplay from './auth/QuotaDisplay';
 
 function PostGenerator({ onGenerate, onGenerating, isLoading }) {
   const [textInput, setTextInput] = useState('');
@@ -8,6 +10,8 @@ function PostGenerator({ onGenerate, onGenerating, isLoading }) {
   const [imageFiles, setImageFiles] = useState([]);
   const [urlInput, setUrlInput] = useState('');
   const [error, setError] = useState('');
+  const { quotaRemaining } = useAuth();
+  const isQuotaExhausted = quotaRemaining === 0;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -139,11 +143,14 @@ function PostGenerator({ onGenerate, onGenerating, isLoading }) {
 
           {error && <div className="error-message">{error}</div>}
 
+          <QuotaDisplay />
+
           <div className="button-group">
             <button
               type="submit"
               className="btn-primary"
-              disabled={isLoading}
+              disabled={isLoading || isQuotaExhausted}
+              title={isQuotaExhausted ? 'Daily limit reached. Try again tomorrow.' : ''}
             >
               {isLoading ? 'Generating...' : 'Generate Post'}
             </button>

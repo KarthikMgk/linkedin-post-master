@@ -16,6 +16,11 @@ jest.mock('../../services/apiService', () => ({
   },
 }));
 
+// Mock useAuth — quota starts null (not yet populated) so button stays enabled
+jest.mock('../../context/AuthProvider', () => ({
+  useAuth: () => ({ quotaRemaining: null }),
+}));
+
 import apiService from '../../services/apiService';
 
 const MOCK_RESULT = {
