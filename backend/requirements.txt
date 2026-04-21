@@ -1,6 +1,6 @@
 fastapi==0.109.0
 uvicorn[standard]==0.27.0
-python-multipart==0.0.6
+python-multipart==0.0.26
 anthropic==0.18.1
 PyPDF2==3.0.1
 pillow==10.2.0
