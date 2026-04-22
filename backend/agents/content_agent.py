@@ -3,11 +3,21 @@ Content Generation Agent
 Handles LinkedIn post generation with engagement optimization
 """
 
+import copy
 import json
 import uuid
 from typing import Optional
 
 from services.claude_service import ClaudeService
+
+# Fallback intelligence object — used when Claude omits the field or JSON parsing fails.
+# Ensures the frontend always receives a well-formed structure.
+DEFAULT_INTELLIGENCE = {
+    "hook_strength": {"rating": "Moderate", "reason": "Intelligence unavailable for this variant"},
+    "cta_clarity": {"status": "consider", "suggestion": "Intelligence unavailable for this variant"},
+    "optimal_posting_time": {"time": "Tuesday 10am UTC", "reason": "Standard B2B engagement window"},
+    "length_assessment": {"status": "optimal", "char_count": 0},
+}
 
 
 class ContentGenerationAgent:
@@ -146,31 +156,51 @@ Return your response as JSON with the following structure containing ALL THREE v
             "hook_strength": "Strong",
             "suggestions": ["Specific improvement suggestion 1", "Specific improvement suggestion 2"],
             "cta": "Call to action used",
-            "image_alt_text": "Brief description of an ideal complementary image (1-2 sentences)"
+            "image_alt_text": "Brief description of an ideal complementary image (1-2 sentences)",
+            "intelligence": {
+                "hook_strength": {
+                    "rating": "Strong",
+                    "reason": "Specific reason tied to the actual first line of THIS post"
+                },
+                "cta_clarity": {
+                    "status": "clear",
+                    "suggestion": "Specific actionable observation about the CTA in THIS post"
+                },
+                "optimal_posting_time": {
+                    "time": "Tuesday 10am UTC",
+                    "reason": "Why this time suits the content domain of THIS post"
+                },
+                "length_assessment": {
+                    "status": "optimal",
+                    "char_count": 987
+                }
+            }
         },
         {
             "id": "unique-id-2",
             "personality": "structured",
             "label": "Structured Approach",
             "post": "...",
-            "hashtags": ["hashtag1", "hashtag2", "hashtag3"],
+            "hashtags": ["..."],
             "engagement_score": 8.2,
             "hook_strength": "Strong",
             "suggestions": ["..."],
             "cta": "...",
-            "image_alt_text": "..."
+            "image_alt_text": "...",
+            "intelligence": { "hook_strength": {"rating": "...", "reason": "..."}, "cta_clarity": {"status": "...", "suggestion": "..."}, "optimal_posting_time": {"time": "...", "reason": "..."}, "length_assessment": {"status": "...", "char_count": 0} }
         },
         {
             "id": "unique-id-3",
             "personality": "provocative",
             "label": "Provocative Approach",
             "post": "...",
-            "hashtags": ["hashtag1", "hashtag2", "hashtag3"],
+            "hashtags": ["..."],
             "engagement_score": 8.8,
             "hook_strength": "Exceptional",
             "suggestions": ["..."],
             "cta": "...",
-            "image_alt_text": "..."
+            "image_alt_text": "...",
+            "intelligence": { "hook_strength": {"rating": "...", "reason": "..."}, "cta_clarity": {"status": "...", "suggestion": "..."}, "optimal_posting_time": {"time": "...", "reason": "..."}, "length_assessment": {"status": "...", "char_count": 0} }
         }
     ]
 }
@@ -180,6 +210,33 @@ Return your response as JSON with the following structure containing ALL THREE v
 - **Engagement Score (0-10)**: Overall post effectiveness for that personality
 - **Hook Strength**: Weak / Moderate / Strong / Exceptional
 - Each variant should score HIGH for its specific personality (a Bold post that resonates with bold readers scores higher than a safe, vanilla post)
+
+## INTELLIGENCE SCORING RULES:
+
+### hook_strength.rating
+- Exceptional: Impossible to scroll past — creates instant curiosity or shock
+- Strong: Compelling opener that creates curiosity or makes a bold claim
+- Moderate: Acceptable but predictable — doesn't stand out in the feed
+- Weak: Generic opener — could be any post by anyone
+
+### cta_clarity.status
+- clear: Post ends with an explicit ask (question, invitation, instruction)
+- consider: CTA is implied but weak or buried — not prominent enough
+- missing: No call to action at all
+
+### optimal_posting_time (infer from content domain)
+- B2B / Tech / SaaS / AI: Tuesday–Thursday, 9–11am UTC
+- Career / HR / Hiring: Monday–Tuesday, 7–9am UTC
+- Entrepreneurship / Startups: Wednesday–Thursday, 12–2pm UTC
+- General Business / Leadership: Wednesday, 10am–12pm UTC
+- Creative / Personal Brand: Friday, 9–11am UTC
+
+### length_assessment.status
+- too_short: fewer than 400 characters
+- optimal: 400–2000 characters
+- too_long: more than 2000 characters
+
+IMPORTANT: The char_count field must be your best estimate of len(post). It will be verified server-side.
 
 ## GUIDELINES:
 
@@ -298,6 +355,22 @@ Now generate all three variants from the provided content."""
                 elif "post_text" in variant:
                     variant["post"] = variant["post_text"].replace("\\n", "\n").strip()
                     del variant["post_text"]
+                # Ensure intelligence object exists — inject default if Claude omitted it
+
+                if "intelligence" not in variant or not isinstance(variant["intelligence"], dict):
+                    variant["intelligence"] = copy.deepcopy(DEFAULT_INTELLIGENCE)
+                # Always overwrite char_count server-side — Claude's estimate is unreliable
+                variant["intelligence"].setdefault("length_assessment", {})
+                variant["intelligence"]["length_assessment"]["char_count"] = len(variant.get("post", ""))
+                # Ensure status field exists in length_assessment
+                if "status" not in variant["intelligence"]["length_assessment"]:
+                    char_count = variant["intelligence"]["length_assessment"]["char_count"]
+                    if char_count < 400:
+                        variant["intelligence"]["length_assessment"]["status"] = "too_short"
+                    elif char_count > 2000:
+                        variant["intelligence"]["length_assessment"]["status"] = "too_long"
+                    else:
+                        variant["intelligence"]["length_assessment"]["status"] = "optimal"
 
             # Pad to exactly 3 variants using fallback if the model returned fewer
             if len(variants) < 3:
@@ -387,7 +460,29 @@ Now generate all three variants from the provided content."""
         conversation = [
             {
                 "role": "user",
-                "content": f"Here's my current LinkedIn post:\n\n{post_text}\n\nI want to refine it based on feedback: {feedback}\n\nPlease apply the requested changes and return the improved post in the EXACT same JSON format you used initially, with these fields:\n- post_text: the refined post content\n- hashtags: array of relevant hashtags\n- engagement_score: score from 0-10\n- hook_strength: Weak/Moderate/Strong/Exceptional\n- suggestions: array of further improvement suggestions\n\nReturn ONLY the JSON, no other text.",
+                "content": f"""Here's my current LinkedIn post:
+
+{post_text}
+
+I want to refine it based on feedback: {feedback}
+
+Please apply the requested changes and return the improved post as JSON with these fields:
+- post_text: the refined post content
+- hashtags: array of relevant hashtags
+- engagement_score: score from 0-10
+- hook_strength: Weak/Moderate/Strong/Exceptional
+- suggestions: array of further improvement suggestions
+- cta: the call to action used
+- intelligence: {{
+    "hook_strength": {{"rating": "Strong", "reason": "specific reason tied to the actual first line"}},
+    "cta_clarity": {{"status": "clear", "suggestion": "specific observation about the CTA"}},
+    "optimal_posting_time": {{"time": "Tuesday 10am UTC", "reason": "why this time suits the content"}},
+    "length_assessment": {{"status": "optimal", "char_count": 0}}
+  }}
+
+For intelligence ratings: hook_strength rating is Weak/Moderate/Strong/Exceptional; cta_clarity status is clear/consider/missing; length_assessment status is too_short/optimal/too_long.
+
+Return ONLY the JSON, no other text.""",
             }
         ]
 
@@ -416,11 +511,19 @@ Now generate all three variants from the provided content."""
             if "post_text" in result:
                 result["post_text"] = result["post_text"].replace("\\n", "\n").strip()
 
+            # Ensure intelligence exists and overwrite char_count server-side
+            import copy
+            if "intelligence" not in result or not isinstance(result["intelligence"], dict):
+                result["intelligence"] = copy.deepcopy(DEFAULT_INTELLIGENCE)
+            result["intelligence"].setdefault("length_assessment", {})
+            result["intelligence"]["length_assessment"]["char_count"] = len(result.get("post_text", ""))
+
             result["changes"] = [feedback]  # Track what was requested
             return result
         except json.JSONDecodeError as e:
             print(f"Refine JSON parsing error: {e}")
             print(f"Response was: {response[:500]}")
+            import copy
             return {
                 "post_text": response.replace("\\n", "\n").strip(),
                 "hashtags": [],
@@ -428,6 +531,7 @@ Now generate all three variants from the provided content."""
                 "hook_strength": "Moderate",
                 "suggestions": ["Could not parse structured output"],
                 "changes": [feedback],
+                "intelligence": copy.deepcopy(DEFAULT_INTELLIGENCE),
             }
 
     async def refine_variant(
@@ -465,12 +569,21 @@ I want to refine it based on feedback: {feedback}
 
 {personality_context}
 
-Please apply the requested changes while maintaining the {personality or "original"} personality and style. Return the improved post in JSON format:
+Please apply the requested changes while maintaining the {personality or "original"} personality and style. Return the improved post as JSON with these fields:
 - post_text: the refined post content
 - hashtags: array of relevant hashtags
 - engagement_score: score from 0-10
 - hook_strength: Weak/Moderate/Strong/Exceptional
 - suggestions: array of further improvement suggestions
+- cta: the call to action used
+- intelligence: {{
+    "hook_strength": {{"rating": "Strong", "reason": "specific reason tied to the actual first line"}},
+    "cta_clarity": {{"status": "clear", "suggestion": "specific observation about the CTA"}},
+    "optimal_posting_time": {{"time": "Tuesday 10am UTC", "reason": "why this time suits the content"}},
+    "length_assessment": {{"status": "optimal", "char_count": 0}}
+  }}
+
+For intelligence ratings: hook_strength rating is Weak/Moderate/Strong/Exceptional; cta_clarity status is clear/consider/missing; length_assessment status is too_short/optimal/too_long.
 
 Return ONLY the JSON, no other text.""",
             }
@@ -499,6 +612,13 @@ Return ONLY the JSON, no other text.""",
             if "post_text" in result:
                 result["post_text"] = result["post_text"].replace("\\n", "\n").strip()
 
+            # Ensure intelligence exists and overwrite char_count server-side
+            import copy
+            if "intelligence" not in result or not isinstance(result["intelligence"], dict):
+                result["intelligence"] = copy.deepcopy(DEFAULT_INTELLIGENCE)
+            result["intelligence"].setdefault("length_assessment", {})
+            result["intelligence"]["length_assessment"]["char_count"] = len(result.get("post_text", ""))
+
             result["changes"] = [feedback]
             # Preserve personality and label
             result["personality"] = personality or "unknown"
@@ -507,6 +627,7 @@ Return ONLY the JSON, no other text.""",
             return result
         except json.JSONDecodeError as e:
             print(f"Refine variant JSON parsing error: {e}")
+            import copy
             return {
                 "post_text": response.replace("\\n", "\n").strip(),
                 "hashtags": [],
@@ -516,6 +637,7 @@ Return ONLY the JSON, no other text.""",
                 "changes": [feedback],
                 "personality": personality or "unknown",
                 "label": label or "Approach",
+                "intelligence": copy.deepcopy(DEFAULT_INTELLIGENCE),
             }
 
     def _get_personality_context(self, personality: str) -> str:

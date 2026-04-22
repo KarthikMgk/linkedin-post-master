@@ -18,7 +18,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from agents.content_agent import ContentGenerationAgent
+from agents.content_agent import ContentGenerationAgent, DEFAULT_INTELLIGENCE
 from auth.allowlist import is_allowed
 from auth.google_auth import verify_google_token
 from auth.jwt_handler import create_jwt
@@ -360,6 +360,7 @@ async def refine_post(
             "hashtags": refined_result.get("hashtags", []),
             "suggestions": refined_result.get("suggestions", []),
             "cta": refined_result.get("cta", ""),
+            "intelligence": refined_result.get("intelligence", DEFAULT_INTELLIGENCE),
         }
 
         if personality:
