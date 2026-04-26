@@ -76,6 +76,17 @@ function VariantCard({ variant, isSelected, hasUserSelected, onSelect, onCopy, i
         </div>
       )}
 
+      {/* Generated image */}
+      {variant.image?.url && (
+        <div className="variant-card__image">
+          <img
+            src={variant.image.url}
+            alt={variant.image.alt_text || variant.image_alt_text || 'Generated LinkedIn image'}
+            className="variant-card__image-preview"
+          />
+        </div>
+      )}
+
       {/* Actions */}
       <div className="variant-card__actions">
         <button

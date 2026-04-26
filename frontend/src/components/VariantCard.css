@@ -2,7 +2,7 @@
 .variant-cards-row {
   display: flex;
   flex-direction: row;
-  gap: var(--spacing-xl);
+  gap: var(--spacing-lg);
   overflow-x: auto;
   padding-bottom: var(--spacing-md);
   margin-bottom: var(--spacing-2xl);
@@ -26,8 +26,8 @@
 
 /* Base card (AC2, AC5) */
 .variant-card {
-  min-width: 340px;
-  flex: 1 0 340px;
+  min-width: 280px;
+  flex: 1 1 300px;
   background: white;
   border: 1px solid var(--gray-200);
   border-radius: var(--radius-lg);
@@ -69,7 +69,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--spacing-md);
+  gap: var(--spacing-sm);
+  min-width: 0;
 }
 
 /* Personality color badge (AC2) */
@@ -78,11 +79,15 @@
   color: white;
   font-size: 0.75rem;
   font-weight: 700;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  padding: 4px var(--spacing-md);
+  padding: 4px var(--spacing-sm);
   border-radius: var(--radius-md);
   white-space: nowrap;
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Engagement score badge (AC2) */
@@ -91,9 +96,10 @@
   font-weight: 700;
   border: 2px solid;
   border-radius: var(--radius-md);
-  padding: 2px var(--spacing-md);
+  padding: 2px var(--spacing-sm);
   white-space: nowrap;
   background: white;
+  flex-shrink: 0;
 }
 
 /* Hook strength label */
@@ -175,6 +181,22 @@
 .variant-card__select-btn--active:hover {
   background: var(--primary-dark);
   color: white;
+}
+
+/* Generated image (Story 4.3) */
+.variant-card__image {
+  margin-top: var(--spacing-md);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--gray-200);
+}
+
+.variant-card__image-preview {
+  width: 100%;
+  height: auto;
+  display: block;
+  aspect-ratio: 1200 / 627;
+  object-fit: cover;
 }
 
 /* Copy button (AC4) */
