@@ -206,3 +206,249 @@ def test_root_returns_running_status(client):
     response = client.get("/")
     assert response.status_code == 200
     assert response.json()["status"] == "running"
+
+
+# ---------------------------------------------------------------------------
+# Image generation integration — Story 4.1
+# ---------------------------------------------------------------------------
+
+_MOCK_IMAGE = {
+    "url": "https://fal.media/files/generated.jpg",
+    "alt_text": "Developer at terminal.",
+    "prompt_used": "High-contrast professional photo of a developer.",
+}
+
+
+def test_generate_includes_image_in_each_variant(client, mock_variants_result):
+    """AC1: Each variant in /api/generate response contains an image object."""
+    with (
+        patch("main.content_agent.generate_variants", new_callable=AsyncMock) as mock_gen,
+        patch("main.image_service.generate", new_callable=AsyncMock) as mock_img,
+    ):
+        mock_gen.return_value = mock_variants_result
+        mock_img.return_value = _MOCK_IMAGE
+
+        response = client.post("/api/generate", data={"text_input": "Test content"})
+
+    assert response.status_code == 200
+    data = response.json()
+    for variant in data["variants"]:
+        assert "image" in variant
+        assert variant["image"]["url"] == _MOCK_IMAGE["url"]
+        assert variant["image"]["alt_text"] == _MOCK_IMAGE["alt_text"]
+        assert variant["image"]["prompt_used"] == _MOCK_IMAGE["prompt_used"]
+
+
+def test_generate_image_called_for_all_three_variants(client, mock_variants_result):
+    """AC1: image_service.generate() is called once per variant (3 total)."""
+    with (
+        patch("main.content_agent.generate_variants", new_callable=AsyncMock) as mock_gen,
+        patch("main.image_service.generate", new_callable=AsyncMock) as mock_img,
+    ):
+        mock_gen.return_value = mock_variants_result
+        mock_img.return_value = _MOCK_IMAGE
+
+        client.post("/api/generate", data={"text_input": "Test content"})
+
+    assert mock_img.call_count == 3
+
+
+def test_generate_graceful_image_failure_returns_200(client, mock_variants_result):
+    """AC3: If image generation fails for all variants, response is still HTTP 200."""
+    with (
+        patch("main.content_agent.generate_variants", new_callable=AsyncMock) as mock_gen,
+        patch("main.image_service.generate", new_callable=AsyncMock) as mock_img,
+    ):
+        mock_gen.return_value = mock_variants_result
+        mock_img.return_value = None  # graceful failure
+
+        response = client.post("/api/generate", data={"text_input": "Test content"})
+
+    assert response.status_code == 200
+    assert response.json()["success"] is True
+
+
+def test_generate_graceful_failure_sets_image_null(client, mock_variants_result):
+    """AC3: When image=None, each variant has image: null in response."""
+    with (
+        patch("main.content_agent.generate_variants", new_callable=AsyncMock) as mock_gen,
+        patch("main.image_service.generate", new_callable=AsyncMock) as mock_img,
+    ):
+        mock_gen.return_value = mock_variants_result
+        mock_img.return_value = None
+
+        response = client.post("/api/generate", data={"text_input": "Test content"})
+
+    data = response.json()
+    for variant in data["variants"]:
+        assert variant["image"] is None
+
+
+def test_generate_graceful_failure_adds_image_suggestion(client, mock_variants_result):
+    """AC3: When image=None, each variant's intelligence gains image_suggestion."""
+    with (
+        patch("main.content_agent.generate_variants", new_callable=AsyncMock) as mock_gen,
+        patch("main.image_service.generate", new_callable=AsyncMock) as mock_img,
+    ):
+        mock_gen.return_value = mock_variants_result
+        mock_img.return_value = None
+
+        response = client.post("/api/generate", data={"text_input": "Test content"})
+
+    data = response.json()
+    for variant in data["variants"]:
+        assert "image_suggestion" in variant["intelligence"]
+        assert len(variant["intelligence"]["image_suggestion"]) > 0
+
+
+def test_refine_includes_image_in_response(client, mock_refine_result):
+    """AC4: /api/refine response includes an image key."""
+    with (
+        patch("main.content_agent.refine_post", new_callable=AsyncMock) as mock_refine,
+        patch("main.image_service.generate", new_callable=AsyncMock) as mock_img,
+    ):
+        mock_refine.return_value = mock_refine_result
+        mock_img.return_value = _MOCK_IMAGE
+
+        response = client.post(
+            "/api/refine",
+            data={"post_text": "Original post", "feedback": "make it punchier"},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "image" in data
+    assert data["image"]["url"] == _MOCK_IMAGE["url"]
+
+
+def test_refine_graceful_image_failure_still_returns_200(client, mock_refine_result):
+    """AC4 + AC3: /api/refine still returns 200 even when image generation fails."""
+    with (
+        patch("main.content_agent.refine_post", new_callable=AsyncMock) as mock_refine,
+        patch("main.image_service.generate", new_callable=AsyncMock) as mock_img,
+    ):
+        mock_refine.return_value = mock_refine_result
+        mock_img.return_value = None
+
+        response = client.post(
+            "/api/refine",
+            data={"post_text": "Original post", "feedback": "make it punchier"},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["image"] is None
+    # AC3: intelligence.image_suggestion must be a non-empty string when image is null
+    assert "image_suggestion" in data["intelligence"]
+    assert len(data["intelligence"]["image_suggestion"]) > 0
+
+
+# ---------------------------------------------------------------------------
+# image_visual_rationale — Story 4.2
+# ---------------------------------------------------------------------------
+
+
+def test_generate_variants_include_image_visual_rationale(client, mock_variants_result):
+    """AC1/AC2: Each variant's intelligence includes image_visual_rationale."""
+    with (
+        patch("main.content_agent.generate_variants", new_callable=AsyncMock) as mock_gen,
+        patch("main.image_service.generate", new_callable=AsyncMock) as mock_img,
+    ):
+        mock_gen.return_value = mock_variants_result
+        mock_img.return_value = None
+
+        response = client.post("/api/generate", data={"text_input": "Test content"})
+
+    assert response.status_code == 200
+    data = response.json()
+    for variant in data["variants"]:
+        assert "image_visual_rationale" in variant["intelligence"]
+
+
+def test_refine_response_includes_image_visual_rationale(client, mock_refine_result):
+    """AC3: Refine response intelligence includes image_visual_rationale."""
+    with (
+        patch("main.content_agent.refine_post", new_callable=AsyncMock) as mock_refine,
+        patch("main.image_service.generate", new_callable=AsyncMock) as mock_img,
+    ):
+        mock_refine.return_value = mock_refine_result
+        mock_img.return_value = None
+
+        response = client.post(
+            "/api/refine",
+            data={"post_text": "Original post", "feedback": "make it punchier"},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "image_visual_rationale" in data["intelligence"]
+
+
+# ---------------------------------------------------------------------------
+# /api/regenerate-image — Story 4.2 (AC4)
+# ---------------------------------------------------------------------------
+
+
+def test_regenerate_image_returns_image_on_success(client):
+    """AC4: /api/regenerate-image returns image dict on successful generation."""
+    with patch("main.image_service.generate", new_callable=AsyncMock) as mock_img:
+        mock_img.return_value = _MOCK_IMAGE
+
+        response = client.post(
+            "/api/regenerate-image",
+            json={"image_description": "High-contrast developer photo.", "alt_text": "Developer."},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert data["image"]["url"] == _MOCK_IMAGE["url"]
+
+
+def test_regenerate_image_with_custom_direction_prepends_it(client):
+    """AC4: custom_direction is prepended to image_description before generation."""
+    with patch("main.image_service.generate", new_callable=AsyncMock) as mock_img:
+        mock_img.return_value = _MOCK_IMAGE
+
+        client.post(
+            "/api/regenerate-image",
+            json={
+                "image_description": "High-contrast developer photo.",
+                "custom_direction": "Make it darker and more dramatic",
+            },
+        )
+
+    called_prompt = mock_img.call_args[0][0]
+    assert called_prompt.startswith("Make it darker and more dramatic")
+    assert "High-contrast developer photo." in called_prompt
+
+
+def test_regenerate_image_returns_null_on_failure(client):
+    """AC4: When image generation fails, response is still 200 with image=null and image_suggestion set."""
+    with patch("main.image_service.generate", new_callable=AsyncMock) as mock_img:
+        mock_img.return_value = None
+
+        response = client.post(
+            "/api/regenerate-image",
+            json={"image_description": "A vivid professional photo.", "alt_text": "Photo."},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["image"] is None
+    assert "image_suggestion" in data
+    assert len(data["image_suggestion"]) > 0
+
+
+def test_regenerate_image_requires_auth():
+    """AC4: /api/regenerate-image returns 401 when no auth token provided."""
+    from fastapi.testclient import TestClient
+    from main import app as _app
+
+    # Use a fresh client without auth override
+    with TestClient(_app) as unauthed_client:
+        response = unauthed_client.post(
+            "/api/regenerate-image",
+            json={"image_description": "Test."},
+        )
+    assert response.status_code == 401
