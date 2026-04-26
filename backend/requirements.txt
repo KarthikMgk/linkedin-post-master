@@ -5,7 +5,7 @@ anthropic==0.18.1
 PyPDF2==3.0.1
 pillow==10.2.0
 pytesseract==0.3.10
-python-dotenv==1.0.0
+python-dotenv==1.2.2
 pydantic==2.5.3
 httpx==0.26.0
 # Auth dependencies
