@@ -1,3 +1,7 @@
+/* Tailwind utilities — preflight disabled to avoid conflicts with existing CSS */
+@tailwind components;
+@tailwind utilities;
+
 * {
   margin: 0;
   padding: 0;
