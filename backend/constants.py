@@ -1,0 +1,4 @@
+# LinkedIn image specification constants
+LINKEDIN_IMAGE_WIDTH = 1200
+LINKEDIN_IMAGE_HEIGHT = 627
+LINKEDIN_IMAGE_MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB

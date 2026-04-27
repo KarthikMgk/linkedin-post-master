@@ -20,11 +20,9 @@ from typing import Optional
 
 from PIL import Image
 
-logger = logging.getLogger(__name__)
+from constants import LINKEDIN_IMAGE_WIDTH, LINKEDIN_IMAGE_HEIGHT, LINKEDIN_IMAGE_MAX_FILE_SIZE
 
-_LINKEDIN_WIDTH = 1200
-_LINKEDIN_HEIGHT = 627
-_MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
+logger = logging.getLogger(__name__)
 
 
 class ImageGenerationService:
@@ -112,7 +110,7 @@ class ImageGenerationService:
                 arguments={
                     "prompt": prompt,
                     # Request exact LinkedIn dimensions to minimise distortion.
-                    "image_size": {"width": _LINKEDIN_WIDTH, "height": _LINKEDIN_HEIGHT},
+                    "image_size": {"width": LINKEDIN_IMAGE_WIDTH, "height": LINKEDIN_IMAGE_HEIGHT},
                     "num_images": 1,
                     "num_inference_steps": 4,  # schnell default — fast
                 },
@@ -179,15 +177,15 @@ class ImageGenerationService:
                 enhanced,
                 negative_prompt=negative,
                 model="black-forest-labs/FLUX.1-schnell",
-                width=_LINKEDIN_WIDTH,
-                height=_LINKEDIN_HEIGHT,
+                width=LINKEDIN_IMAGE_WIDTH,
+                height=LINKEDIN_IMAGE_HEIGHT,
                 num_inference_steps=12,  # schnell plateaus ~12; sweet spot for quality/speed
             ),
         )
 
         # Resize to exact LinkedIn spec and encode as JPEG data URI
-        if pil_image.size != (_LINKEDIN_WIDTH, _LINKEDIN_HEIGHT):
-            pil_image = pil_image.resize((_LINKEDIN_WIDTH, _LINKEDIN_HEIGHT), Image.LANCZOS)
+        if pil_image.size != (LINKEDIN_IMAGE_WIDTH, LINKEDIN_IMAGE_HEIGHT):
+            pil_image = pil_image.resize((LINKEDIN_IMAGE_WIDTH, LINKEDIN_IMAGE_HEIGHT), Image.LANCZOS)
 
         if pil_image.mode in ("RGBA", "P", "LA"):
             pil_image = pil_image.convert("RGB")
@@ -222,8 +220,8 @@ class ImageGenerationService:
         img = Image.open(io.BytesIO(image_bytes))
 
         # Resize if needed
-        if img.size != (_LINKEDIN_WIDTH, _LINKEDIN_HEIGHT):
-            img = img.resize((_LINKEDIN_WIDTH, _LINKEDIN_HEIGHT), Image.LANCZOS)
+        if img.size != (LINKEDIN_IMAGE_WIDTH, LINKEDIN_IMAGE_HEIGHT):
+            img = img.resize((LINKEDIN_IMAGE_WIDTH, LINKEDIN_IMAGE_HEIGHT), Image.LANCZOS)
 
         # Convert RGBA/P → RGB so we can save as JPEG
         if img.mode in ("RGBA", "P", "LA"):
@@ -233,7 +231,7 @@ class ImageGenerationService:
         for quality in (85, 75, 65, 55):
             buf = io.BytesIO()
             img.save(buf, format="JPEG", quality=quality, optimize=True)
-            if buf.tell() <= _MAX_FILE_SIZE:
+            if buf.tell() <= LINKEDIN_IMAGE_MAX_FILE_SIZE:
                 return buf.getvalue()
 
         # Fallback: return at minimum quality (extremely rare for 1200×627)
