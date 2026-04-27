@@ -3,6 +3,8 @@ LinkedIn Post Generator - FastAPI Backend
 Main application entry point
 """
 
+import asyncio
+import copy
 import os
 import time
 from typing import Any, Optional
@@ -25,6 +27,7 @@ from auth.jwt_handler import create_jwt
 from middleware.auth_middleware import require_auth, require_quota
 from services import quota_service
 from services.claude_service import ClaudeService
+from services.image_service import ImageGenerationService
 from services.input_processor import InputProcessor
 from utils.exceptions import InvalidFileError, RateLimitError, ServiceUnavailableError
 from utils.logger import get_logger
@@ -40,6 +43,11 @@ _REQUIRED_AUTH_VARS = ["GOOGLE_CLIENT_ID", "ALLOWED_EMAILS", "JWT_SECRET"]
 for _var in _REQUIRED_AUTH_VARS:
     if not os.getenv(_var, "").strip():
         logger.warning("Auth env var %s is not set — login will fail until configured.", _var)
+
+if not os.getenv("IMAGE_GEN_API_KEY", "").strip():
+    logger.warning(
+        "IMAGE_GEN_API_KEY is not set — image generation will be skipped (images will be null)."
+    )
 
 app = FastAPI(
     title="LinkedIn Post Generator API",
@@ -70,10 +78,21 @@ app.add_middleware(
 claude_service = ClaudeService(api_key=os.getenv("ANTHROPIC_API_KEY") or "")
 input_processor = InputProcessor()
 content_agent = ContentGenerationAgent(claude_service)
+image_service = ImageGenerationService(
+    api_key=os.getenv("IMAGE_GEN_API_KEY", ""),
+    provider=os.getenv("IMAGE_GEN_PROVIDER", "fal"),
+)
 
 
 class GoogleAuthRequest(BaseModel):
     token: str
+
+
+
+class RegenerateImageRequest(BaseModel):
+    image_description: str
+    alt_text: str = ""
+    custom_direction: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -126,6 +145,26 @@ async def validation_exception_handler(
 # Routes
 # ---------------------------------------------------------------------------
 
+
+
+@app.post("/api/auth/dev-login")
+async def dev_login():
+    """
+    Development-only login endpoint — bypasses Google OAuth.
+    Only active when DEV_AUTH_ENABLED=true in the environment.
+    Returns a real signed JWT for the first allowed email so Playwright
+    (and other dev tools) can authenticate without a browser-based OAuth flow.
+    """
+    if os.getenv("DEV_AUTH_ENABLED", "false").lower() != "true":
+        raise HTTPException(status_code=404, detail="Not found")
+
+    allowed = [e.strip() for e in os.getenv("ALLOWED_EMAILS", "").split(",") if e.strip()]
+    if not allowed:
+        raise HTTPException(status_code=500, detail="No ALLOWED_EMAILS configured")
+
+    email = allowed[0]
+    token = create_jwt(email=email, name="Dev User", picture="")
+    return {"token": token, "user": {"email": email, "name": "Dev User", "picture": ""}}
 
 @app.get("/")
 async def root():
@@ -242,6 +281,27 @@ async def generate_post(
         if not variants:
             raise HTTPException(status_code=500, detail="Content generation returned no variants")
 
+        # Generate images in parallel for all 3 variants
+        image_tasks = [
+            image_service.generate(
+                v.get("image_description", ""),
+                v.get("image_alt_text", ""),
+            )
+            for v in variants
+        ]
+        image_results = await asyncio.gather(*image_tasks, return_exceptions=True)
+        for variant, img in zip(variants, image_results):
+            if isinstance(img, Exception):
+                logger.error("Unexpected exception from image_service.generate: %s", img)
+                img = None
+            variant["image"] = img
+            if img is None:
+                intel = variant.setdefault("intelligence", {})
+                intel["image_suggestion"] = variant.get(
+                    "image_description",
+                    "Professional LinkedIn image matching your post's tone and message.",
+                )
+
         first_variant = variants[0]
 
         elapsed_ms = int((time.monotonic() - start_time) * 1000)
@@ -344,6 +404,22 @@ async def refine_post(
             refined_result.get("personality", "default"),
         )
 
+        # Ensure intelligence exists before adding image_suggestion below
+        if not isinstance(refined_result.get("intelligence"), dict):
+            refined_result["intelligence"] = copy.deepcopy(DEFAULT_INTELLIGENCE)
+
+        # Generate a refreshed image for the refined variant
+        refined_image = await image_service.generate(
+            refined_result.get("image_description", ""),
+            refined_result.get("image_alt_text", ""),
+        )
+        refined_result["image"] = refined_image
+        if refined_image is None:
+            refined_result["intelligence"]["image_suggestion"] = (
+                refined_result.get("image_description")
+                or "Professional LinkedIn image matching your post's tone and message."
+            )
+
         # Increment quota AFTER successful refinement (failed calls don't count)
         quota_remaining = _DAILY_LIMIT_DEFAULT
         try:
@@ -361,6 +437,7 @@ async def refine_post(
             "suggestions": refined_result.get("suggestions", []),
             "cta": refined_result.get("cta", ""),
             "intelligence": refined_result.get("intelligence", DEFAULT_INTELLIGENCE),
+            "image": refined_result.get("image"),
         }
 
         if personality:
@@ -390,6 +467,47 @@ async def refine_post(
         logger.error("Unhandled error in refine request (%dms): %s", elapsed_ms, str(e), exc_info=True)
         raise HTTPException(status_code=500, detail=f"Refinement failed: {str(e)}") from e
 
+
+
+# ---------------------------------------------------------------------------
+# POST /api/regenerate-image
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/regenerate-image")
+async def regenerate_image(
+    request: RegenerateImageRequest,
+    email: str = Depends(require_auth),
+):
+    """
+    Regenerate the image for a variant using the stored image_description,
+    optionally guided by a user-supplied custom direction.
+    """
+    start_time = time.monotonic()
+
+    base_prompt = request.image_description.strip()
+    if request.custom_direction.strip():
+        combined = f"{request.custom_direction.strip()}. {base_prompt}"
+    else:
+        combined = base_prompt
+
+    combined = combined[:800]
+
+    image = await image_service.generate(combined, request.alt_text)
+
+    elapsed_ms = int((time.monotonic() - start_time) * 1000)
+    logger.info(
+        "POST /api/regenerate-image - user: %s, time: %dms, success: %s",
+        email,
+        elapsed_ms,
+        image is not None,
+    )
+
+    response_data: dict[str, Any] = {"success": True, "image": image}
+    if image is None:
+        response_data["image_suggestion"] = combined or "Professional LinkedIn image."
+
+    return JSONResponse(content=response_data)
 
 if __name__ == "__main__":
     import uvicorn
