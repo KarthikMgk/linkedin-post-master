@@ -181,3 +181,77 @@ test('updates displayed intelligence when variant prop changes', () => {
   expect(screen.getByText(/acceptable but predictable opener/i)).toBeInTheDocument();
   expect(screen.queryByText(/opens with a bold challenge/i)).not.toBeInTheDocument();
 });
+
+// ---------------------------------------------------------------------------
+// Story 4.2 AC4: Image Visual section
+// ---------------------------------------------------------------------------
+
+const makeVariantWithImage = (imageDescription, promptUsed, rationale) => ({
+  id: 'v-img',
+  personality: 'bold',
+  label: 'Bold Approach',
+  post: 'Test post',
+  hashtags: [],
+  engagement_score: 8,
+  hook_strength: 'Strong',
+  image_description: imageDescription,
+  image_alt_text: 'Alt text.',
+  image: promptUsed ? { url: 'https://example.com/img.jpg', alt_text: 'Alt.', prompt_used: promptUsed } : null,
+  intelligence: {
+    ...ALL_GREEN_INTEL,
+    image_visual_rationale: rationale || '',
+  },
+});
+
+test('renders Image Visual section label when variant has image_description', () => {
+  const variant = makeVariantWithImage('High-contrast developer photo.', null, '');
+  render(<IntelligenceSidebar variant={variant} />);
+  expect(screen.getByText(/image visual/i)).toBeInTheDocument();
+});
+
+test('shows prompt_used as title tooltip when image is present', () => {
+  const prompt = 'High-contrast developer photo at terminal.';
+  const variant = makeVariantWithImage('fallback', prompt, '');
+  const { container } = render(<IntelligenceSidebar variant={variant} />);
+  // Prompt is in the title attribute (tooltip) on the rationale paragraph
+  const el = container.querySelector(`[title="${prompt}"]`);
+  expect(el).toBeTruthy();
+});
+
+test('shows image_visual_rationale as the detail text', () => {
+  const variant = makeVariantWithImage('Photo.', null, 'Bold contrast chosen to amplify the provocative hook.');
+  render(<IntelligenceSidebar variant={variant} />);
+  expect(screen.getByText(/bold contrast chosen/i)).toBeInTheDocument();
+});
+
+test('renders Regenerate button', () => {
+  const variant = makeVariantWithImage('Photo.', null, '');
+  render(<IntelligenceSidebar variant={variant} />);
+  expect(screen.getByRole('button', { name: /regenerate/i })).toBeInTheDocument();
+});
+
+test('calls onRegenerateImage when Regenerate is clicked twice', () => {
+  const onRegenerate = jest.fn();
+  const variant = makeVariantWithImage('Photo.', null, '');
+  render(<IntelligenceSidebar variant={variant} onRegenerateImage={onRegenerate} />);
+
+  // First click reveals direction input
+  fireEvent.click(screen.getByRole('button', { name: /regenerate/i }));
+  // Second click (now shows "Go") triggers the callback
+  fireEvent.click(screen.getByRole('button', { name: /go/i }));
+  expect(onRegenerate).toHaveBeenCalledTimes(1);
+});
+
+test('shows custom direction input after first button click', () => {
+  const variant = makeVariantWithImage('Photo.', null, '');
+  render(<IntelligenceSidebar variant={variant} />);
+  fireEvent.click(screen.getByRole('button', { name: /regenerate/i }));
+  expect(screen.getByPlaceholderText(/custom direction/i)).toBeInTheDocument();
+});
+
+test('shows spinner and disables button when isRegenerating=true', () => {
+  const variant = makeVariantWithImage('Photo.', null, '');
+  render(<IntelligenceSidebar variant={variant} isRegenerating={true} />);
+  const btn = screen.getByRole('button', { name: /regenerating/i });
+  expect(btn).toBeDisabled();
+});

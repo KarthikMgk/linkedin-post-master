@@ -21,6 +21,9 @@ os.environ.setdefault("FRONTEND_URL", "http://localhost:3000")
 os.environ.setdefault("GOOGLE_CLIENT_ID", "test-client-id.apps.googleusercontent.com")
 os.environ.setdefault("ALLOWED_EMAILS", "test@example.com")
 os.environ.setdefault("JWT_SECRET", "test-secret-for-testing-only")
+# Image generation — dummy values; real calls are always mocked in tests
+os.environ.setdefault("IMAGE_GEN_API_KEY", "test-image-api-key")
+os.environ.setdefault("IMAGE_GEN_PROVIDER", "fal")
 
 # Add backend root to sys.path so imports like `from main import app` work
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -55,6 +58,7 @@ _MOCK_INTELLIGENCE = {
     "cta_clarity": {"status": "clear", "suggestion": "Direct question invites comments effectively"},
     "optimal_posting_time": {"time": "Tuesday 10am UTC", "reason": "B2B tech content peaks mid-morning"},
     "length_assessment": {"status": "optimal", "char_count": 100},
+    "image_visual_rationale": "Bold high-contrast visual chosen to reinforce the post's opinion-driven tone.",
 }
 
 # Mock result for generate_variants (list of 3 variant dicts)
@@ -72,6 +76,9 @@ MOCK_VARIANTS_RESULT = [
         "hook_strength": "Strong",
         "suggestions": ["Add a specific data point", "End with a question"],
         "cta": "What's your experience with AI agents?",
+        "image_alt_text": "Developer at a terminal with bold text overlay about AI agents.",
+        "image_description": "High-contrast photo of a developer at a terminal. Bold text overlay: 'The AI adoption truth nobody talks about'. Dark background, neon green terminal glow. LinkedIn 16:9 landscape.",
+        "image": None,
         "intelligence": _MOCK_INTELLIGENCE,
     },
     {
@@ -87,6 +94,9 @@ MOCK_VARIANTS_RESULT = [
         "hook_strength": "Strong",
         "suggestions": ["Add data points"],
         "cta": "Share your thoughts below",
+        "image_alt_text": "Clean infographic comparing AI agent adoption stages.",
+        "image_description": "Clean professional infographic on white background showing AI agent adoption curve. Blue and grey color scheme. Data-focused, authoritative. LinkedIn 16:9 landscape.",
+        "image": None,
         "intelligence": _MOCK_INTELLIGENCE,
     },
     {
@@ -102,6 +112,9 @@ MOCK_VARIANTS_RESULT = [
         "hook_strength": "Exceptional",
         "suggestions": ["Consider the timing"],
         "cta": "Drop your experiences below",
+        "image_alt_text": "Provocative split image: AI hype vs. reality.",
+        "image_description": "Split-screen image: left side shows AI marketing hype (colorful, optimistic), right side shows reality (blank terminal, confusion). Bold dividing line. Provocative LinkedIn 16:9 composition.",
+        "image": None,
         "intelligence": _MOCK_INTELLIGENCE,
     },
 ]
@@ -114,11 +127,14 @@ MOCK_REFINE_RESULT = {
     "suggestions": ["Near perfect!"],
     "cta": "Drop your thoughts below",
     "changes": ["make it punchier"],
+    "image_alt_text": "Professional image of humans and AI working together.",
+    "image_description": "Warm, humanistic photo of a person working alongside a glowing AI assistant. Collaborative mood. Soft lighting, modern office. LinkedIn 16:9 landscape composition.",
     "intelligence": {
         "hook_strength": {"rating": "Exceptional", "reason": "Reframes AI as colleagues — deeply relatable"},
         "cta_clarity": {"status": "clear", "suggestion": "Invites sharing — strong community engagement signal"},
         "optimal_posting_time": {"time": "Tuesday 10am UTC", "reason": "B2B tech content peaks mid-morning"},
         "length_assessment": {"status": "optimal", "char_count": 87},
+        "image_visual_rationale": "Warm collaborative visual chosen to reflect the refined post's humanistic tone.",
     },
 }
 
