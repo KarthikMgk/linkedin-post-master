@@ -20,6 +20,22 @@ const statusBadgeColor = {
   missing:   'bg-red-100  text-red-800  border border-red-200',
 };
 
+const ratingFill = {
+  Exceptional: { pct: 100, color: 'bg-green-500' },
+  Strong:      { pct: 75,  color: 'bg-green-400' },
+  Moderate:    { pct: 50,  color: 'bg-amber-400' },
+  Weak:        { pct: 25,  color: 'bg-red-400'   },
+};
+
+const statusFill = {
+  clear:     { pct: 100, color: 'bg-green-500' },
+  optimal:   { pct: 100, color: 'bg-green-500' },
+  consider:  { pct: 50,  color: 'bg-amber-400' },
+  too_short: { pct: 40,  color: 'bg-amber-400' },
+  too_long:  { pct: 40,  color: 'bg-amber-400' },
+  missing:   { pct: 20,  color: 'bg-red-400'   },
+};
+
 const dotColor = {
   Exceptional: 'bg-green-500',
   Strong:      'bg-green-500',
@@ -78,7 +94,15 @@ function SkeletonRow() {
   );
 }
 
-function DimensionRow({ label, icon, badge, badgeColor, detail }) {
+function DimensionRow({ label, icon, badge, badgeColor, detail, fillPct = 0, fillColor = 'bg-gray-300' }) {
+  const [width, setWidth] = useState(0);
+
+  useEffect(() => {
+    setWidth(0);
+    const t = setTimeout(() => setWidth(fillPct), 40);
+    return () => clearTimeout(t);
+  }, [fillPct]);
+
   return (
     <div className="p-3 rounded-lg border border-gray-100 space-y-1.5">
       <div className="flex items-center justify-between gap-2">
@@ -88,6 +112,12 @@ function DimensionRow({ label, icon, badge, badgeColor, detail }) {
         <span className={`text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap ${badgeColor}`}>
           {badge}
         </span>
+      </div>
+      <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
+        <div
+          className={`h-full rounded-full ${fillColor}`}
+          style={{ width: `${width}%`, transition: 'width 0.7s cubic-bezier(0.4, 0, 0.2, 1)' }}
+        />
       </div>
       <p className="text-xs text-gray-600 leading-relaxed">{detail}</p>
     </div>
@@ -289,6 +319,8 @@ function IntelligenceSidebar({ variant, isLoading = false, onRegenerateImage, is
               badge={intel.hook_strength?.rating || '—'}
               badgeColor={ratingBadgeColor[intel.hook_strength?.rating] || 'bg-gray-100 text-gray-600 border border-gray-200'}
               detail={intel.hook_strength?.reason || '—'}
+              fillPct={ratingFill[intel.hook_strength?.rating]?.pct ?? 0}
+              fillColor={ratingFill[intel.hook_strength?.rating]?.color ?? 'bg-gray-300'}
             />
             <DimensionRow
               label="CTA"
@@ -296,6 +328,8 @@ function IntelligenceSidebar({ variant, isLoading = false, onRegenerateImage, is
               badge={intel.cta_clarity?.status || '—'}
               badgeColor={statusBadgeColor[intel.cta_clarity?.status] || 'bg-gray-100 text-gray-600 border border-gray-200'}
               detail={intel.cta_clarity?.suggestion || '—'}
+              fillPct={statusFill[intel.cta_clarity?.status]?.pct ?? 0}
+              fillColor={statusFill[intel.cta_clarity?.status]?.color ?? 'bg-gray-300'}
             />
             <DimensionRow
               label="Best Time"
@@ -303,6 +337,8 @@ function IntelligenceSidebar({ variant, isLoading = false, onRegenerateImage, is
               badge={intel.optimal_posting_time?.time || '—'}
               badgeColor="bg-blue-100 text-blue-800 border border-blue-200"
               detail={intel.optimal_posting_time?.reason || '—'}
+              fillPct={intel.optimal_posting_time?.time ? 85 : 0}
+              fillColor="bg-blue-400"
             />
             <DimensionRow
               label="Length"
@@ -310,6 +346,8 @@ function IntelligenceSidebar({ variant, isLoading = false, onRegenerateImage, is
               badge={`${intel.length_assessment?.char_count ?? 0} chars · ${intel.length_assessment?.status || '—'}`}
               badgeColor={statusBadgeColor[intel.length_assessment?.status] || 'bg-gray-100 text-gray-600 border border-gray-200'}
               detail={lengthDetail(intel)}
+              fillPct={statusFill[intel.length_assessment?.status]?.pct ?? 0}
+              fillColor={statusFill[intel.length_assessment?.status]?.color ?? 'bg-gray-300'}
             />
             <ImageVisualSection
               variant={variant}
