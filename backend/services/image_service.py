@@ -15,9 +15,11 @@ import base64
 import io
 import logging
 import os
+import re
 import time
 from typing import Optional
 
+from huggingface_hub import InferenceClient
 from PIL import Image
 
 from constants import LINKEDIN_IMAGE_WIDTH, LINKEDIN_IMAGE_HEIGHT, LINKEDIN_IMAGE_MAX_FILE_SIZE
@@ -138,9 +140,6 @@ class ImageGenerationService:
 
         Returns a base64 data URI so no external CDN hosting is needed.
         """
-        import re
-        from huggingface_hub import InferenceClient
-
         # Strip text/typography overlay instructions — diffusion models can't render
         # readable text and attempts produce garbled characters that hurt image quality.
         cleaned = re.sub(
