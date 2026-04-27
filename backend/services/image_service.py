@@ -22,7 +22,7 @@ from typing import Optional
 from huggingface_hub import InferenceClient
 from PIL import Image
 
-from constants import LINKEDIN_IMAGE_WIDTH, LINKEDIN_IMAGE_HEIGHT, LINKEDIN_IMAGE_MAX_FILE_SIZE
+from constants import LINKEDIN_IMAGE_WIDTH, LINKEDIN_IMAGE_HEIGHT, LINKEDIN_IMAGE_MAX_FILE_SIZE, IMAGE_GEN_INFERENCE_STEPS
 
 logger = logging.getLogger(__name__)
 
@@ -178,7 +178,7 @@ class ImageGenerationService:
                 model="black-forest-labs/FLUX.1-schnell",
                 width=LINKEDIN_IMAGE_WIDTH,
                 height=LINKEDIN_IMAGE_HEIGHT,
-                num_inference_steps=12,  # schnell plateaus ~12; sweet spot for quality/speed
+                num_inference_steps=IMAGE_GEN_INFERENCE_STEPS,
             ),
         )
 
