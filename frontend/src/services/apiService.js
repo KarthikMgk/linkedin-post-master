@@ -143,6 +143,19 @@ const apiService = {
   },
 
   /**
+   * Regenerate the image for a variant using its stored image_description,
+   * optionally guided by a user-supplied custom direction (Story 4.2 AC4).
+   */
+  async regenerateImage({ imageDescription, altText = '', customDirection = '' }) {
+    const response = await apiClient.post('/api/regenerate-image', {
+      image_description: imageDescription,
+      alt_text: altText,
+      custom_direction: customDirection,
+    });
+    return response.data;
+  },
+
+  /**
    * Check API health — returns an error object rather than throwing.
    */
   async checkHealth() {

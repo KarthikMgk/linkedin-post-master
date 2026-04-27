@@ -17,6 +17,7 @@ DEFAULT_INTELLIGENCE = {
     "cta_clarity": {"status": "consider", "suggestion": "Intelligence unavailable for this variant"},
     "optimal_posting_time": {"time": "Tuesday 10am UTC", "reason": "Standard B2B engagement window"},
     "length_assessment": {"status": "optimal", "char_count": 0},
+    "image_visual_rationale": "",
 }
 
 
@@ -157,6 +158,7 @@ Return your response as JSON with the following structure containing ALL THREE v
             "suggestions": ["Specific improvement suggestion 1", "Specific improvement suggestion 2"],
             "cta": "Call to action used",
             "image_alt_text": "Brief description of an ideal complementary image (1-2 sentences)",
+            "image_description": "High-contrast professional photo or bold graphic. Strong visual metaphor matching the confident, opinion-driven tone. Dark background with sharp accent colour, cinematic lighting. No text or typography. LinkedIn 16:9 landscape. Derive prompt from THIS post's specific hook subject and claim — 2-4 sentences.",
             "intelligence": {
                 "hook_strength": {
                     "rating": "Strong",
@@ -173,7 +175,8 @@ Return your response as JSON with the following structure containing ALL THREE v
                 "length_assessment": {
                     "status": "optimal",
                     "char_count": 987
-                }
+                },
+                "image_visual_rationale": "1-2 sentences explaining why this bold, high-contrast visual treatment amplifies THIS post's specific hook and opinion-driven tone."
             }
         },
         {
@@ -187,7 +190,8 @@ Return your response as JSON with the following structure containing ALL THREE v
             "suggestions": ["..."],
             "cta": "...",
             "image_alt_text": "...",
-            "intelligence": { "hook_strength": {"rating": "...", "reason": "..."}, "cta_clarity": {"status": "...", "suggestion": "..."}, "optimal_posting_time": {"time": "...", "reason": "..."}, "length_assessment": {"status": "...", "char_count": 0} }
+            "image_description": "Clean professional photograph or illustration conveying the data point or framework visually. Blue/grey colour scheme, minimal clutter, clear visual hierarchy. White or light background, sharp focus. No text or typography. LinkedIn 16:9 landscape. Derive prompt from THIS post's specific data point, framework, or numbered insight — 2-4 sentences.",
+            "intelligence": { "hook_strength": {"rating": "...", "reason": "..."}, "cta_clarity": {"status": "...", "suggestion": "..."}, "optimal_posting_time": {"time": "...", "reason": "..."}, "length_assessment": {"status": "...", "char_count": 0}, "image_visual_rationale": "1-2 sentences explaining why this clean, data-focused visual complements THIS post's structured, credibility-driven approach." }
         },
         {
             "id": "unique-id-3",
@@ -200,7 +204,8 @@ Return your response as JSON with the following structure containing ALL THREE v
             "suggestions": ["..."],
             "cta": "...",
             "image_alt_text": "...",
-            "intelligence": { "hook_strength": {"rating": "...", "reason": "..."}, "cta_clarity": {"status": "...", "suggestion": "..."}, "optimal_posting_time": {"time": "...", "reason": "..."}, "length_assessment": {"status": "...", "char_count": 0} }
+            "image_description": "Attention-disrupting photograph with unexpected juxtaposition or visual contradiction. Bold, unexpected colour palette that stops scrolling. Cinematic composition, dramatic lighting, no text or typography. LinkedIn 16:9 landscape. Derive prompt from THIS post's specific contrarian angle or shocking claim — 2-4 sentences.",
+            "intelligence": { "hook_strength": {"rating": "...", "reason": "..."}, "cta_clarity": {"status": "...", "suggestion": "..."}, "optimal_posting_time": {"time": "...", "reason": "..."}, "length_assessment": {"status": "...", "char_count": 0}, "image_visual_rationale": "1-2 sentences explaining why this pattern-disrupting visual reinforces THIS post's contrarian angle and scroll-stopping intent." }
         }
     ]
 }
@@ -246,6 +251,7 @@ IMPORTANT: The char_count field must be your best estimate of len(post). It will
 4. Provocative should challenge assumptions — not just be controversial for shock value
 5. Keep all variants under 3000 characters (LinkedIn limit)
 6. Each variant gets 3-5 specific, relevant hashtags
+7. The `image_description` field must be a clean image generation prompt — do NOT prefix it with variant name labels like "BOLD variant —" or "STRUCTURED variant —". Write it as a direct image prompt only.
 
 Now generate all three variants from the provided content."""
 
@@ -371,6 +377,24 @@ Now generate all three variants from the provided content."""
                         variant["intelligence"]["length_assessment"]["status"] = "too_long"
                     else:
                         variant["intelligence"]["length_assessment"]["status"] = "optimal"
+                # Ensure image_description exists — fall back to image_alt_text or generic
+                if not variant.get("image_description"):
+                    fallback = variant.get("image_alt_text") or (
+                        "Professional LinkedIn post image, clean composition, cinematic lighting, no text."
+                    )
+                    if variant.get("image_alt_text"):
+                        print(
+                            "image_description missing for variant — falling back to image_alt_text; "
+                            "image quality may be reduced"
+                        )
+                    variant["image_description"] = fallback
+                # Ensure image_visual_rationale exists in intelligence
+                if not variant.get("intelligence", {}).get("image_visual_rationale"):
+                    personality = variant.get("personality", "variant")
+                    variant["intelligence"]["image_visual_rationale"] = (
+                        f"Visual style chosen to complement the {personality} variant's "
+                        "tone and hook. Adjust if the image direction doesn't match your post's intent."
+                    )
 
             # Pad to exactly 3 variants using fallback if the model returned fewer
             if len(variants) < 3:
@@ -405,6 +429,14 @@ Now generate all three variants from the provided content."""
                     "hook_strength": "Moderate",
                     "suggestions": ["Could not parse structured output"],
                     "cta": "Engage with this post",
+                    "image_alt_text": "Professional LinkedIn post image.",
+                    "image_description": (
+                        "Professional LinkedIn post image, clean composition, cinematic lighting, no text."
+                    ),
+                    "intelligence": {
+                        **copy.deepcopy(DEFAULT_INTELLIGENCE),
+                        "image_visual_rationale": "Unable to generate image rationale — fallback variant.",
+                    },
                 }
             )
         return variants
@@ -473,11 +505,14 @@ Please apply the requested changes and return the improved post as JSON with the
 - hook_strength: Weak/Moderate/Strong/Exceptional
 - suggestions: array of further improvement suggestions
 - cta: the call to action used
+- image_alt_text: brief description of an ideal complementary image (1-2 sentences)
+- image_description: detailed image generation prompt (2-4 sentences) matching the refined post's updated tone and visual style
 - intelligence: {{
     "hook_strength": {{"rating": "Strong", "reason": "specific reason tied to the actual first line"}},
     "cta_clarity": {{"status": "clear", "suggestion": "specific observation about the CTA"}},
     "optimal_posting_time": {{"time": "Tuesday 10am UTC", "reason": "why this time suits the content"}},
-    "length_assessment": {{"status": "optimal", "char_count": 0}}
+    "length_assessment": {{"status": "optimal", "char_count": 0}},
+    "image_visual_rationale": "1-2 sentences explaining why the updated image direction was chosen and how it complements the refined post's new tone"
   }}
 
 For intelligence ratings: hook_strength rating is Weak/Moderate/Strong/Exceptional; cta_clarity status is clear/consider/missing; length_assessment status is too_short/optimal/too_long.
@@ -512,18 +547,29 @@ Return ONLY the JSON, no other text.""",
                 result["post_text"] = result["post_text"].replace("\\n", "\n").strip()
 
             # Ensure intelligence exists and overwrite char_count server-side
-            import copy
             if "intelligence" not in result or not isinstance(result["intelligence"], dict):
                 result["intelligence"] = copy.deepcopy(DEFAULT_INTELLIGENCE)
             result["intelligence"].setdefault("length_assessment", {})
             result["intelligence"]["length_assessment"]["char_count"] = len(result.get("post_text", ""))
+
+            # Ensure image_description fallback
+            if not result.get("image_description"):
+                result["image_description"] = result.get(
+                    "image_alt_text",
+                    "Professional LinkedIn post image with clean composition.",
+                )
+
+            # Ensure image_visual_rationale fallback
+            result["intelligence"].setdefault(
+                "image_visual_rationale",
+                "Visual direction updated to match the refined post's tone.",
+            )
 
             result["changes"] = [feedback]  # Track what was requested
             return result
         except json.JSONDecodeError as e:
             print(f"Refine JSON parsing error: {e}")
             print(f"Response was: {response[:500]}")
-            import copy
             return {
                 "post_text": response.replace("\\n", "\n").strip(),
                 "hashtags": [],
@@ -531,7 +577,11 @@ Return ONLY the JSON, no other text.""",
                 "hook_strength": "Moderate",
                 "suggestions": ["Could not parse structured output"],
                 "changes": [feedback],
-                "intelligence": copy.deepcopy(DEFAULT_INTELLIGENCE),
+                "image_description": "Professional LinkedIn post image.",
+                "intelligence": {
+                    **copy.deepcopy(DEFAULT_INTELLIGENCE),
+                    "image_visual_rationale": "Visual direction unavailable — parse error.",
+                },
             }
 
     async def refine_variant(
@@ -576,11 +626,14 @@ Please apply the requested changes while maintaining the {personality or "origin
 - hook_strength: Weak/Moderate/Strong/Exceptional
 - suggestions: array of further improvement suggestions
 - cta: the call to action used
+- image_alt_text: brief description of an ideal complementary image (1-2 sentences)
+- image_description: detailed image generation prompt (2-4 sentences) matching the refined post's updated tone and {personality or "original"} visual style
 - intelligence: {{
     "hook_strength": {{"rating": "Strong", "reason": "specific reason tied to the actual first line"}},
     "cta_clarity": {{"status": "clear", "suggestion": "specific observation about the CTA"}},
     "optimal_posting_time": {{"time": "Tuesday 10am UTC", "reason": "why this time suits the content"}},
-    "length_assessment": {{"status": "optimal", "char_count": 0}}
+    "length_assessment": {{"status": "optimal", "char_count": 0}},
+    "image_visual_rationale": "1-2 sentences explaining why the updated image direction was chosen and how it complements the refined post's new tone and {personality or 'original'} style"
   }}
 
 For intelligence ratings: hook_strength rating is Weak/Moderate/Strong/Exceptional; cta_clarity status is clear/consider/missing; length_assessment status is too_short/optimal/too_long.
@@ -613,7 +666,6 @@ Return ONLY the JSON, no other text.""",
                 result["post_text"] = result["post_text"].replace("\\n", "\n").strip()
 
             # Ensure intelligence exists and overwrite char_count server-side
-            import copy
             if "intelligence" not in result or not isinstance(result["intelligence"], dict):
                 result["intelligence"] = copy.deepcopy(DEFAULT_INTELLIGENCE)
             result["intelligence"].setdefault("length_assessment", {})
@@ -624,10 +676,22 @@ Return ONLY the JSON, no other text.""",
             result["personality"] = personality or "unknown"
             result["label"] = label or f"{(personality or 'Default').capitalize()} Approach"
 
+            # Ensure image_description fallback
+            if not result.get("image_description"):
+                result["image_description"] = result.get(
+                    "image_alt_text",
+                    "Professional LinkedIn post image with clean composition.",
+                )
+
+            # Ensure image_visual_rationale fallback
+            result["intelligence"].setdefault(
+                "image_visual_rationale",
+                f"Visual direction updated to match the refined {personality or 'post'}'s tone.",
+            )
+
             return result
         except json.JSONDecodeError as e:
             print(f"Refine variant JSON parsing error: {e}")
-            import copy
             return {
                 "post_text": response.replace("\\n", "\n").strip(),
                 "hashtags": [],
@@ -637,7 +701,11 @@ Return ONLY the JSON, no other text.""",
                 "changes": [feedback],
                 "personality": personality or "unknown",
                 "label": label or "Approach",
-                "intelligence": copy.deepcopy(DEFAULT_INTELLIGENCE),
+                "image_description": "Professional LinkedIn post image.",
+                "intelligence": {
+                    **copy.deepcopy(DEFAULT_INTELLIGENCE),
+                    "image_visual_rationale": "Visual direction unavailable — parse error.",
+                },
             }
 
     def _get_personality_context(self, personality: str) -> str:
