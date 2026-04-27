@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import './PostResult.css';
 import apiService from '../services/apiService';
+import IntelligenceSidebar from './IntelligenceSidebar';
 import VariantCard from './VariantCard';
 
 const LINKEDIN_CHAR_LIMIT = 3000;
@@ -74,6 +75,8 @@ function PostResult({ result, onReset }) {
           image_alt_text: refined.image_alt_text !== undefined
             ? refined.image_alt_text
             : updated[selectedIndex].image_alt_text,
+          // AC6 (Story 3.3): update intelligence from refined result so sidebar stays in sync
+          intelligence: refined.intelligence ?? updated[selectedIndex].intelligence,
         };
         return updated;
       });
@@ -139,6 +142,9 @@ function PostResult({ result, onReset }) {
         </div>
       )}
 
+      {/* Flex row: main content left, intelligence sidebar right */}
+      <div className="flex gap-4 items-start">
+        <div className="flex-1 min-w-0">
       <div className={`result-card ${isRefining ? 'refining' : ''}`}>
         <div className="result-header">
           <h2>Generated Post</h2>
@@ -290,6 +296,14 @@ function PostResult({ result, onReset }) {
           {error && <div className="error-message" role="alert">{error}</div>}
         </div>
       </div>
+        </div>{/* end main content */}
+
+        {/* Intelligence sidebar — shows intel for the currently selected variant */}
+        <IntelligenceSidebar
+          variant={currentPost}
+          isLoading={isRefining}
+        />
+      </div>{/* end flex row */}
     </div>
   );
 }

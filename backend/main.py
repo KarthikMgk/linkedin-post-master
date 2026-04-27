@@ -146,6 +146,26 @@ async def validation_exception_handler(
 # ---------------------------------------------------------------------------
 
 
+
+@app.post("/api/auth/dev-login")
+async def dev_login():
+    """
+    Development-only login endpoint — bypasses Google OAuth.
+    Only active when DEV_AUTH_ENABLED=true in the environment.
+    Returns a real signed JWT for the first allowed email so Playwright
+    (and other dev tools) can authenticate without a browser-based OAuth flow.
+    """
+    if os.getenv("DEV_AUTH_ENABLED", "false").lower() != "true":
+        raise HTTPException(status_code=404, detail="Not found")
+
+    allowed = [e.strip() for e in os.getenv("ALLOWED_EMAILS", "").split(",") if e.strip()]
+    if not allowed:
+        raise HTTPException(status_code=500, detail="No ALLOWED_EMAILS configured")
+
+    email = allowed[0]
+    token = create_jwt(email=email, name="Dev User", picture="")
+    return {"token": token, "user": {"email": email, "name": "Dev User", "picture": ""}}
+
 @app.get("/")
 async def root():
     return {"status": "running", "service": "LinkedIn Post Generator API", "version": "0.1.0"}
