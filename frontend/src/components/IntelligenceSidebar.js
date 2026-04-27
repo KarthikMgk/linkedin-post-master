@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 // ---------------------------------------------------------------------------
 // Color mappings
@@ -95,10 +95,89 @@ function DimensionRow({ label, icon, badge, badgeColor, detail }) {
 }
 
 // ---------------------------------------------------------------------------
+// ImageVisualSection sub-component (AC4 — Story 4.2)
+// ---------------------------------------------------------------------------
+
+function ImageVisualSection({ variant, onRegenerateImage, isRegenerating }) {
+  const [showDirectionInput, setShowDirectionInput] = useState(false);
+  const [customDirection, setCustomDirection] = useState('');
+
+  const hasImage = !!variant?.image?.url;
+  const promptText = variant?.image?.prompt_used || variant?.image_description || '';
+  const rationale = variant?.intelligence?.image_visual_rationale || '';
+
+  const handleRegenerate = useCallback(() => {
+    if (!showDirectionInput) {
+      setShowDirectionInput(true);
+      return;
+    }
+    if (onRegenerateImage) onRegenerateImage(customDirection);
+    setShowDirectionInput(false);
+    setCustomDirection('');
+  }, [showDirectionInput, customDirection, onRegenerateImage]);
+
+  const handleKeyDown = useCallback(
+    (e) => {
+      if (e.key === 'Enter') handleRegenerate();
+      if (e.key === 'Escape') { setShowDirectionInput(false); setCustomDirection(''); }
+    },
+    [handleRegenerate]
+  );
+
+  return (
+    <div className="p-3 rounded-lg border border-gray-100 space-y-1.5">
+      {/* Header row — matches DimensionRow style */}
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1">
+          <span>🖼️</span> Image Visual
+        </span>
+        <span className={`text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap border ${
+          hasImage
+            ? 'bg-green-100 text-green-800 border-green-200'
+            : 'bg-gray-100 text-gray-500 border-gray-200'
+        }`}>
+          {hasImage ? 'Ready' : '—'}
+        </span>
+      </div>
+
+      {/* Rationale — the "why" explanation; prompt shown only as tooltip */}
+      <p
+        className="text-xs text-gray-600 leading-relaxed"
+        title={promptText || undefined}
+      >
+        {rationale || (hasImage ? 'Image generated.' : 'No image generated.')}
+      </p>
+
+      {/* Regenerate controls */}
+      {showDirectionInput && (
+        <input
+          type="text"
+          value={customDirection}
+          onChange={(e) => setCustomDirection(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Custom direction (optional)…"
+          className="w-full text-xs border border-gray-200 rounded px-2 py-1 focus:outline-none focus:border-blue-400"
+          autoFocus
+        />
+      )}
+      <button
+        onClick={handleRegenerate}
+        disabled={isRegenerating}
+        className="text-xs text-blue-600 border border-blue-200 rounded px-2 py-1 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+      >
+        {isRegenerating ? (
+          <><span className="animate-spin inline-block w-3 h-3 border border-blue-400 border-t-transparent rounded-full" /> Regenerating…</>
+        ) : showDirectionInput ? 'Go' : '↺ Regenerate'}
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
-function IntelligenceSidebar({ variant, isLoading = false }) {
+function IntelligenceSidebar({ variant, isLoading = false, onRegenerateImage, isRegenerating = false }) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [showCelebration, setShowCelebration] = useState(false);
   const prevAllGreenRef = useRef(false);
@@ -121,12 +200,14 @@ function IntelligenceSidebar({ variant, isLoading = false }) {
   // Collapsed strip
   // ---------------------------------------------------------------------------
   if (isCollapsed) {
+    const hasImage = !!(variant?.image?.url || variant?.image_description);
     const dots = intel ? [
       dotColor[intel.hook_strength?.rating]     || 'bg-gray-300',
       dotColor[intel.cta_clarity?.status]       || 'bg-gray-300',
       'bg-blue-400',
       dotColor[intel.length_assessment?.status] || 'bg-gray-300',
-    ] : Array(4).fill('bg-gray-200');
+      hasImage ? 'bg-purple-400' : 'bg-gray-200',
+    ] : Array(5).fill('bg-gray-200');
 
     return (
       <div className="flex flex-col items-center w-12 bg-white border border-gray-200 rounded-xl shadow-sm py-3 gap-3 flex-shrink-0">
@@ -229,6 +310,11 @@ function IntelligenceSidebar({ variant, isLoading = false }) {
               badge={`${intel.length_assessment?.char_count ?? 0} chars · ${intel.length_assessment?.status || '—'}`}
               badgeColor={statusBadgeColor[intel.length_assessment?.status] || 'bg-gray-100 text-gray-600 border border-gray-200'}
               detail={lengthDetail(intel)}
+            />
+            <ImageVisualSection
+              variant={variant}
+              onRegenerateImage={onRegenerateImage}
+              isRegenerating={isRegenerating}
             />
           </>
         )}

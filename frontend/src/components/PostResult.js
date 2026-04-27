@@ -16,6 +16,7 @@ function PostResult({ result, onReset }) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [hasUserSelected, setHasUserSelected] = useState(false);
   const [isRefining, setIsRefining] = useState(false);
+  const [isRegeneratingImage, setIsRegeneratingImage] = useState(false);
   const [refinementFeedback, setRefinementFeedback] = useState('');
   const [error, setError] = useState('');
   const [showCopyToast, setShowCopyToast] = useState(false);
@@ -35,6 +36,30 @@ function PostResult({ result, onReset }) {
     setHasUserSelected(true);
     setError('');
     setRefinementFeedback('');
+  };
+
+  const updateVariantImage = (variantId, newImage) => {
+    setVariants((prev) =>
+      prev.map((v) => (v.id === variantId ? { ...v, image: newImage } : v))
+    );
+  };
+
+  const handleRegenerateImage = async (customDirection = '') => {
+    if (isRegeneratingImage) return;
+    setIsRegeneratingImage(true);
+    try {
+      const data = await apiService.regenerateImage({
+        imageDescription: currentPost.image_description || '',
+        altText: currentPost.image_alt_text || '',
+        customDirection,
+      });
+      updateVariantImage(currentPost.id, data.image);
+    } catch (err) {
+      // Silent fail — image stays as-is; errors are logged server-side
+      console.error('Image regeneration failed:', err.message);
+    } finally {
+      setIsRegeneratingImage(false);
+    }
   };
 
   const handleRefine = async () => {
@@ -302,6 +327,8 @@ function PostResult({ result, onReset }) {
         <IntelligenceSidebar
           variant={currentPost}
           isLoading={isRefining}
+          onRegenerateImage={handleRegenerateImage}
+          isRegenerating={isRegeneratingImage}
         />
       </div>{/* end flex row */}
     </div>
