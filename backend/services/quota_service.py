@@ -39,13 +39,18 @@ def _seconds_until_midnight() -> int:
 def get_remaining(email: str) -> int:
     """
     Returns remaining quota for today without modifying any counter.
-    Raises redis_lib.RedisError if Redis is unavailable.
+    Returns DAILY_LIMIT (safe default) if Redis is unavailable — never raises.
     """
     if _redis is None:
-        raise redis_lib.RedisError("Redis client not initialized")
-    val = _redis.get(_today_key(email))
-    used = int(val) if val else 0
-    return max(DAILY_LIMIT - used, 0)
+        logger.warning("Redis unavailable — returning safe default quota for %s", email)
+        return DAILY_LIMIT
+    try:
+        val = _redis.get(_today_key(email))
+        used = int(val) if val else 0
+        return max(DAILY_LIMIT - used, 0)
+    except Exception as e:
+        logger.warning("Redis get_remaining failed for %s: %s — returning safe default", email, str(e))
+        return DAILY_LIMIT
 
 
 def check_and_increment(email: str) -> int:

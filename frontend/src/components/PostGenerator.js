@@ -79,6 +79,12 @@ function PostGenerator({ onGenerate, onGenerating, isLoading }) {
           Our AI will synthesize everything into an engaging LinkedIn post.
         </p>
 
+        {isQuotaExhausted && (
+          <div className="quota-exhausted-warning" role="alert">
+            You've reached your daily generation limit. It resets at midnight UTC.
+          </div>
+        )}
+
         <form onSubmit={handleSubmit}>
           {/* Text Input */}
           <div className="input-group">

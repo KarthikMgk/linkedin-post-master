@@ -14,6 +14,13 @@ import pytesseract
 from fastapi import UploadFile
 from PIL import Image
 
+try:
+    pytesseract.get_tesseract_version()
+    _tesseract_available = True
+except Exception:
+    _tesseract_available = False
+    logger.warning("Tesseract OCR binary not found — image OCR will be skipped")
+
 from utils.exceptions import InvalidFileError
 from utils.logger import get_logger
 from utils.sanitizer import sanitize_input
@@ -178,6 +185,10 @@ class InputProcessor:
                 )
                 return ""
             image = Image.open(io.BytesIO(content))
+
+            if not _tesseract_available:
+                logger.warning("Tesseract unavailable — skipping OCR for file '%s'", image_file.filename)
+                return ""
 
             # Run blocking OCR in thread pool to avoid blocking the event loop
             loop = asyncio.get_running_loop()
