@@ -87,9 +87,7 @@ function MainApp() {
         </div>
       </header>
 
-      <main className="flex-1 px-8 py-8 flex justify-center items-start"
-        style={{ backgroundImage: 'radial-gradient(circle at 25% 25%, rgba(10,102,194,0.02) 0%, transparent 50%), radial-gradient(circle at 75% 75%, rgba(10,102,194,0.02) 0%, transparent 50%)', backgroundSize: '100% 100%' }}
-      >
+      <main className="flex-1 px-8 py-8 flex justify-center items-start main-dot-grid">
         <div className="w-full max-w-[1400px]">
           <PostGenerator
             onGenerate={handlePostGenerated}

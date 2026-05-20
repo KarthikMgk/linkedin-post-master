@@ -130,3 +130,10 @@ code {
   background: #fee2e2;
   font-weight: 500;
 }
+
+/* App-main background — dot grid texture for depth (A8) */
+.main-dot-grid {
+  background-color: #F9FAFB;
+  background-image: radial-gradient(#D1D5DB 1px, transparent 1px);
+  background-size: 24px 24px;
+}
