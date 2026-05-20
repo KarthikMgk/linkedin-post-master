@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import './PostGenerator.css';
 import { useAuth } from '../context/AuthProvider';
 import apiService from '../services/apiService';
 import QuotaDisplay from './auth/QuotaDisplay';
@@ -17,7 +16,6 @@ function PostGenerator({ onGenerate, onGenerating, isLoading }) {
     e.preventDefault();
     setError('');
 
-    // Validate at least one input
     if (!textInput && !pdfFile && imageFiles.length === 0 && !urlInput) {
       setError('Please provide at least one input (text, file, or URL)');
       return;
@@ -70,91 +68,99 @@ function PostGenerator({ onGenerate, onGenerating, isLoading }) {
     setError('');
   };
 
+  const inputClass = "w-full p-4 border border-gray-300 rounded-lg text-sm font-sans bg-white text-gray-900 transition-all focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 disabled:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60";
+  const labelClass = "block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide";
+  const inputGroupClass = "mb-6";
+
   return (
-    <div className="post-generator">
-      <div className="generator-card">
-        <h2>Create Your LinkedIn Post</h2>
-        <p className="description">
+    <div className="w-full">
+      <div className="bg-white rounded-xl shadow-md border border-gray-200 p-8">
+        <h2 className="font-display text-xl font-bold text-gray-900 mb-1 tracking-tight">Create Your LinkedIn Post</h2>
+        <p className="text-gray-600 mb-8 text-sm leading-relaxed">
           Drop your content below - text, PDFs, images, or URLs.
           Our AI will synthesize everything into an engaging LinkedIn post.
         </p>
 
         {isQuotaExhausted && (
-          <div className="quota-exhausted-warning" role="alert">
+          <div className="bg-red-50 text-red-800 border border-red-200 rounded-md px-4 py-3 mb-6 text-sm font-medium" role="alert">
             You've reached your daily generation limit. It resets at midnight UTC.
           </div>
         )}
 
         <form onSubmit={handleSubmit}>
-          {/* Text Input */}
-          <div className="input-group">
+          <div className={inputGroupClass}>
             <label>
-              <span className="label-text">Text Content</span>
+              <span className={labelClass}>Text Content</span>
               <textarea
                 value={textInput}
                 onChange={(e) => setTextInput(e.target.value)}
                 placeholder="Enter your content, ideas, or paste article text..."
                 rows="6"
                 disabled={isLoading}
+                className={`${inputClass} resize-vertical min-h-[140px] leading-relaxed`}
               />
             </label>
           </div>
 
-          {/* PDF Upload */}
-          <div className="input-group">
+          <div className={inputGroupClass}>
             <label>
-              <span className="label-text">PDF Document</span>
+              <span className={labelClass}>PDF Document</span>
               <input
                 type="file"
                 accept=".pdf"
                 onChange={handlePdfChange}
                 disabled={isLoading}
+                className="w-full p-4 border-2 border-dashed border-gray-300 bg-gray-50 cursor-pointer text-sm hover:border-primary hover:bg-white file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-white hover:file:bg-primary-dark"
               />
-              {pdfFile && <span className="file-name">Selected: {pdfFile.name}</span>}
+              {pdfFile && <span className="block mt-2 text-primary text-sm font-medium">Selected: {pdfFile.name}</span>}
             </label>
           </div>
 
-          {/* Image Upload */}
-          <div className="input-group">
+          <div className={inputGroupClass}>
             <label>
-              <span className="label-text">Images (with text)</span>
+              <span className={labelClass}>Images (with text)</span>
               <input
                 type="file"
                 accept="image/*"
                 multiple
                 onChange={handleImageChange}
                 disabled={isLoading}
+                className="w-full p-4 border-2 border-dashed border-gray-300 bg-gray-50 cursor-pointer text-sm hover:border-primary hover:bg-white file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-white hover:file:bg-primary-dark"
               />
               {imageFiles.length > 0 && (
-                <span className="file-name">
+                <span className="block mt-2 text-primary text-sm font-medium">
                   Selected: {imageFiles.length} image(s)
                 </span>
               )}
             </label>
           </div>
 
-          {/* URL Input */}
-          <div className="input-group">
+          <div className={inputGroupClass}>
             <label>
-              <span className="label-text">URL Reference</span>
+              <span className={labelClass}>URL Reference</span>
               <input
                 type="url"
                 value={urlInput}
                 onChange={(e) => setUrlInput(e.target.value)}
                 placeholder="https://example.com/article"
                 disabled={isLoading}
+                className={inputClass}
               />
             </label>
           </div>
 
-          {error && <div className="error-message">{error}</div>}
+          {error && (
+            <div className="bg-red-50 text-red-600 px-4 py-3 rounded-md mb-6 border-l-4 border-red-600 text-sm font-medium">
+              {error}
+            </div>
+          )}
 
           <QuotaDisplay />
 
-          <div className="button-group">
+          <div className="flex gap-4 mt-8 pt-8 border-t border-gray-200">
             <button
               type="submit"
-              className="btn-primary"
+              className="flex-1 py-3 px-6 bg-primary text-white border-none rounded-lg text-sm font-semibold shadow-sm transition-all hover:bg-primary-dark hover:shadow-md hover:-translate-y-px active:translate-y-0 active:shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={isLoading || isQuotaExhausted}
               title={isQuotaExhausted ? 'Daily limit reached. Try again tomorrow.' : ''}
             >
@@ -164,7 +170,7 @@ function PostGenerator({ onGenerate, onGenerating, isLoading }) {
             <button
               type="button"
               onClick={handleReset}
-              className="btn-secondary"
+              className="py-3 px-6 bg-white text-gray-700 border border-gray-300 rounded-lg text-sm font-semibold flex-shrink-0 transition-all hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={isLoading}
             >
               Reset
