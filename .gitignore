@@ -38,3 +38,4 @@ backend/temp/
 _bmad-output/
 .claude/skills/*
 _bmad/*
+.playwright-mcp/
