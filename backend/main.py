@@ -25,6 +25,7 @@ from auth.allowlist import is_allowed
 from auth.google_auth import verify_google_token
 from auth.jwt_handler import create_jwt
 from middleware.auth_middleware import require_auth, require_quota
+from services.blacklist_service import blacklist_token
 from services import quota_service
 from services.claude_service import ClaudeService
 from services.image_service import ImageGenerationService
@@ -158,6 +159,9 @@ async def dev_login():
     if os.getenv("DEV_AUTH_ENABLED", "false").lower() != "true":
         raise HTTPException(status_code=404, detail="Not found")
 
+    if os.getenv("DEBUG", "false").lower() == "false":
+        raise HTTPException(status_code=404, detail="Not found")
+
     allowed = [e.strip() for e in os.getenv("ALLOWED_EMAILS", "").split(",") if e.strip()]
     if not allowed:
         raise HTTPException(status_code=500, detail="No ALLOWED_EMAILS configured")
@@ -239,6 +243,43 @@ async def auth_google(request: Request, body: GoogleAuthRequest):
 async def auth_me(email: str = Depends(require_auth)):
     """Return current user info."""
     return {"success": True, "email": email}
+
+
+@app.get("/api/quota")
+async def get_quota(email: str = Depends(require_auth)):
+    """
+    Return current user's quota status without modifying the counter.
+    Includes X-RateLimit headers.
+    """
+    from services.quota_service import get_remaining, DAILY_LIMIT, _midnight_utc
+
+    remaining = get_remaining(email)
+    resets_at = _midnight_utc().isoformat() + "Z"
+
+    resp = JSONResponse(content={
+        "success": True,
+        "remaining": remaining,
+        "limit": DAILY_LIMIT,
+        "resets_at": resets_at,
+    })
+    resp.headers["X-RateLimit-Remaining"] = str(remaining)
+    resp.headers["X-RateLimit-Limit"] = str(DAILY_LIMIT)
+    resp.headers["X-RateLimit-Reset"] = str(int(_midnight_utc().timestamp()))
+    return resp
+
+
+@app.post("/api/auth/logout")
+async def logout(request: Request, email: str = Depends(require_auth)):
+    """
+    Log out the current user by blacklisting their JWT.
+    The token remains valid until its natural expiry, but require_auth
+    will reject it after blacklisting.
+    """
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+        blacklist_token(token)
+    return {"success": True, "message": "Logged out"}
 
 
 # ---------------------------------------------------------------------------

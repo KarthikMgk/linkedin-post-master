@@ -36,6 +36,11 @@ def _seconds_until_midnight() -> int:
     return max(int((midnight - now).total_seconds()), 1)
 
 
+def _midnight_utc() -> datetime:
+    now = datetime.now(timezone.utc)
+    return (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+
+
 def get_remaining(email: str) -> int:
     """
     Returns remaining quota for today without modifying any counter.
