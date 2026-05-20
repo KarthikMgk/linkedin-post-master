@@ -59,9 +59,19 @@ module.exports = {
         from: { opacity: '0', transform: 'translateY(20px)' },
         to:   { opacity: '1', transform: 'translateY(0)' },
       },
+      slideUp: {
+        from: { opacity: '0', transform: 'translateY(20px)' },
+        to:   { opacity: '1', transform: 'translateY(0)' },
+      },
+      slideInUp: {
+        from: { opacity: '0', transform: 'translateY(20px)' },
+        to:   { opacity: '1', transform: 'translateY(0)' },
+      },
     },
     animation: {
       'variant-fade-in': 'variantFadeIn 0.4s ease-out both',
+      'slide-up': 'slideUp 0.4s ease-out',
+      'slide-in-up': 'slideInUp 0.3s ease-out',
     },
     extend: {},
   },
