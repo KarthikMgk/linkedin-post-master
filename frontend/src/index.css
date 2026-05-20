@@ -83,3 +83,28 @@ code {
 ::-webkit-scrollbar-thumb:hover {
   background: #9CA3AF;
 }
+
+/* Variant Cards Row — horizontal scrollable container */
+.variant-cards-row {
+  display: flex;
+  flex-direction: row;
+  gap: 1.5rem;
+  overflow-x: auto;
+  padding-bottom: 1rem;
+  margin-bottom: 3rem;
+  scrollbar-width: thin;
+  scrollbar-color: #D1D5DB transparent;
+}
+
+.variant-cards-row::-webkit-scrollbar {
+  height: 6px;
+}
+
+.variant-cards-row::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.variant-cards-row::-webkit-scrollbar-thumb {
+  background: #D1D5DB;
+  border-radius: 3px;
+}

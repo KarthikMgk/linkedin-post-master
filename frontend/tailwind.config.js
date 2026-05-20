@@ -23,6 +23,11 @@ module.exports = {
       success: '#057642',
       warning: '#F59E0B',
       danger: '#DC2626',
+      personality: {
+        bold:        '#FF6B6B',
+        structured:  '#4ECDC4',
+        provocative: '#9B59B6',
+      },
     },
     spacing: {
       xs: '0.25rem',
@@ -48,6 +53,15 @@ module.exports = {
       sans: ['DM Sans', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'sans-serif'],
       display: ['Bricolage Grotesque', 'DM Sans', 'sans-serif'],
       mono: ['SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', 'Consolas', 'monospace'],
+    },
+    keyframes: {
+      variantFadeIn: {
+        from: { opacity: '0', transform: 'translateY(20px)' },
+        to:   { opacity: '1', transform: 'translateY(0)' },
+      },
+    },
+    animation: {
+      'variant-fade-in': 'variantFadeIn 0.4s ease-out both',
     },
     extend: {},
   },
