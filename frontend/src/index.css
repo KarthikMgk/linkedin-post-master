@@ -1,12 +1,6 @@
-/* Tailwind utilities — preflight disabled to avoid conflicts with existing CSS */
+@tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
 
 :root {
   /* Professional Color Palette */
@@ -87,5 +81,5 @@ code {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--gray-400);
+  background: #9CA3AF;
 }
