@@ -182,22 +182,28 @@ function PostResult({ result, onReset }) {
             </div>
 
             <div className={`grid grid-cols-2 gap-6 mb-8 p-5 bg-gray-50 rounded-xl border border-gray-200 transition-opacity ${isUpdating ? 'opacity-0 -translate-y-2' : ''}`}>
-              <div className="flex flex-col items-center gap-1">
+              <div className="flex flex-col items-center gap-2">
                 <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Engagement Score</span>
                 <span className="text-3xl font-bold" style={{ color: getScoreColor(currentPost.engagement_score) }}>
                   {currentPost.engagement_score}/10
                 </span>
+                <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                  <div className="h-full rounded-full" style={{ width: `${currentPost.engagement_score * 10}%`, backgroundColor: getScoreColor(currentPost.engagement_score), transition: 'width 0.7s cubic-bezier(0.4, 0, 0.2, 1)' }} />
+                </div>
               </div>
-              <div className="flex flex-col items-center gap-1">
+              <div className="flex flex-col items-center gap-2">
                 <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Hook Strength</span>
                 <span className="text-3xl font-bold" style={{ color: getHookColor(currentPost.hook_strength) }}>
                   {currentPost.hook_strength}
                 </span>
+                <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                  <div className="h-full rounded-full" style={{ width: `${currentPost.hook_strength === 'Exceptional' ? 100 : currentPost.hook_strength === 'Strong' ? 75 : currentPost.hook_strength === 'Moderate' ? 50 : 25}%`, backgroundColor: getHookColor(currentPost.hook_strength), transition: 'width 0.7s cubic-bezier(0.4, 0, 0.2, 1)' }} />
+                </div>
               </div>
             </div>
 
             <div className={`mb-8 transition-opacity ${isUpdating ? 'opacity-0 -translate-y-2' : ''}`}>
-              <span className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Post Text:</span>
+              <span className="block text-xs font-semibold text-gray-700 mb-2">Post Text:</span>
               <div className="bg-gray-50 p-5 rounded-xl border border-gray-200 leading-relaxed text-sm text-gray-900">
                 {post.split('\n').map((line, index) => (
                   <React.Fragment key={index}>

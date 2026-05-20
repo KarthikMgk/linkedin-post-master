@@ -137,3 +137,23 @@ code {
   background-image: radial-gradient(#D1D5DB 1px, transparent 1px);
   background-size: 24px 24px;
 }
+
+/* A10 — focus-visible */
+*:focus-visible {
+  outline: 2px solid #0A66C2;
+  outline-offset: 2px;
+}
+
+/* A14 — hashtag hover */
+.hashtag {
+  transition: background 0.2s, transform 0.15s;
+}
+.hashtag:hover {
+  background: #004182;
+  transform: scale(1.02);
+}
+
+/* A9 — result card elevation (shadow-xl) */
+.result-card-elevated {
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
