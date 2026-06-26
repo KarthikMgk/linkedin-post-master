@@ -199,6 +199,22 @@
   object-fit: cover;
 }
 
+/* Image loading skeleton */
+.variant-card__image-skeleton {
+  margin-top: var(--spacing-md);
+  border-radius: var(--radius-md);
+  width: 100%;
+  aspect-ratio: 1200 / 627;
+  background: linear-gradient(90deg, var(--gray-100) 25%, var(--gray-200) 50%, var(--gray-100) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s infinite;
+}
+
+@keyframes skeleton-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 /* Copy button (AC4) */
 .variant-card__copy-btn {
   padding: var(--spacing-md) var(--spacing-lg);

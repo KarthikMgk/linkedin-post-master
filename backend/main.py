@@ -281,26 +281,15 @@ async def generate_post(
         if not variants:
             raise HTTPException(status_code=500, detail="Content generation returned no variants")
 
-        # Generate images in parallel for all 3 variants
-        image_tasks = [
-            image_service.generate(
-                v.get("image_description", ""),
-                v.get("image_alt_text", ""),
+        # Images are generated lazily by the client after variants are returned,
+        # keeping the critical-path response time to just the Claude API call.
+        for variant in variants:
+            variant["image"] = None
+            intel = variant.setdefault("intelligence", {})
+            intel["image_suggestion"] = variant.get(
+                "image_description",
+                "Professional LinkedIn image matching your post's tone and message.",
             )
-            for v in variants
-        ]
-        image_results = await asyncio.gather(*image_tasks, return_exceptions=True)
-        for variant, img in zip(variants, image_results):
-            if isinstance(img, Exception):
-                logger.error("Unexpected exception from image_service.generate: %s", img)
-                img = None
-            variant["image"] = img
-            if img is None:
-                intel = variant.setdefault("intelligence", {})
-                intel["image_suggestion"] = variant.get(
-                    "image_description",
-                    "Professional LinkedIn image matching your post's tone and message.",
-                )
 
         first_variant = variants[0]
 

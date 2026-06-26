@@ -13,7 +13,7 @@ const getScoreColor = (score) => {
   return '#f44336';
 };
 
-function VariantCard({ variant, isSelected, hasUserSelected, onSelect, onCopy, index }) {
+function VariantCard({ variant, isSelected, hasUserSelected, onSelect, onCopy, index, isLoadingImage }) {
   const personality = PERSONALITY_COLORS[variant.personality] || { bg: '#666', label: variant.personality || 'Variant' };
   const safePost = typeof variant.post === 'string' ? variant.post : '';
   const safeHashtags = Array.isArray(variant.hashtags) ? variant.hashtags : [];
@@ -77,7 +77,7 @@ function VariantCard({ variant, isSelected, hasUserSelected, onSelect, onCopy, i
       )}
 
       {/* Generated image */}
-      {variant.image?.url && (
+      {variant.image?.url ? (
         <div className="variant-card__image">
           <img
             src={variant.image.url}
@@ -85,7 +85,9 @@ function VariantCard({ variant, isSelected, hasUserSelected, onSelect, onCopy, i
             className="variant-card__image-preview"
           />
         </div>
-      )}
+      ) : isLoadingImage ? (
+        <div className="variant-card__image-skeleton" aria-label="Generating image..." />
+      ) : null}
 
       {/* Actions */}
       <div className="variant-card__actions">

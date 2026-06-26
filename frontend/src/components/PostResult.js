@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './PostResult.css';
 import apiService from '../services/apiService';
 import IntelligenceSidebar from './IntelligenceSidebar';
@@ -17,6 +17,9 @@ function PostResult({ result, onReset }) {
   const [hasUserSelected, setHasUserSelected] = useState(false);
   const [isRefining, setIsRefining] = useState(false);
   const [isRegeneratingImage, setIsRegeneratingImage] = useState(false);
+  const [loadingImages, setLoadingImages] = useState(
+    () => new Set(initialVariants.map((v) => v.id))
+  );
   const [refinementFeedback, setRefinementFeedback] = useState('');
   const [error, setError] = useState('');
   const [showCopyToast, setShowCopyToast] = useState(false);
@@ -43,6 +46,26 @@ function PostResult({ result, onReset }) {
       prev.map((v) => (v.id === variantId ? { ...v, image: newImage } : v))
     );
   };
+
+  // Kick off image generation for all variants in the background after mount.
+  // Each resolves independently so cards update one by one as images come in.
+  useEffect(() => {
+    initialVariants.forEach((variant) => {
+      if (variant.image?.url) {
+        setLoadingImages((prev) => { const s = new Set(prev); s.delete(variant.id); return s; });
+        return;
+      }
+      apiService.regenerateImage({
+        imageDescription: variant.image_description || '',
+        altText: variant.image_alt_text || '',
+      })
+        .then((data) => { updateVariantImage(variant.id, data.image); })
+        .catch((err) => { console.error('Background image load failed:', err.message); })
+        .finally(() => {
+          setLoadingImages((prev) => { const s = new Set(prev); s.delete(variant.id); return s; });
+        });
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleRegenerateImage = async (customDirection = '') => {
     if (isRegeneratingImage) return;
@@ -189,6 +212,7 @@ function PostResult({ result, onReset }) {
               hasUserSelected={hasUserSelected}
               onSelect={() => handleSelectVariant(index)}
               onCopy={copyToClipboard}
+              isLoadingImage={loadingImages.has(variant.id)}
             />
           ))}
         </div>
