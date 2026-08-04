@@ -13,6 +13,7 @@ import pytest
 import redis as redis_lib
 from fastapi.testclient import TestClient
 
+from tests.sse_helpers import parse_sse_data
 from main import app
 from middleware.auth_middleware import require_auth, require_quota
 from services import quota_service
@@ -97,23 +98,26 @@ def test_generate_503_has_structured_error(client_quota):
 # ---------------------------------------------------------------------------
 
 def test_generate_success_includes_quota_remaining_header(client, mock_variants_result):
-    """Successful generation response must carry X-Quota-Remaining header."""
+    """Successful generation SSE payload must carry quota_remaining field."""
     with patch("main.content_agent.generate_variants", new_callable=AsyncMock) as mock_gen, \
          patch.object(quota_service, 'check_and_increment', return_value=7):
         mock_gen.return_value = mock_variants_result
         response = client.post("/api/generate", data={"text_input": "Test"})
 
     assert response.status_code == 200
-    assert response.headers.get("x-quota-remaining") == "7"
+    data = parse_sse_data(response)
+    assert data["quota_remaining"] == 7
 
 
 def test_generate_success_includes_quota_limit_header(client, mock_variants_result):
+    """Successful generation SSE payload must carry quota_limit field."""
     with patch("main.content_agent.generate_variants", new_callable=AsyncMock) as mock_gen, \
          patch.object(quota_service, 'check_and_increment', return_value=7):
         mock_gen.return_value = mock_variants_result
         response = client.post("/api/generate", data={"text_input": "Test"})
 
-    assert response.headers.get("x-quota-limit") is not None
+    data = parse_sse_data(response)
+    assert data.get("quota_limit") is not None
 
 
 def test_refine_success_includes_quota_headers(client, mock_refine_result):

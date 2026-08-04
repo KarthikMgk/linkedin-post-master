@@ -14,52 +14,57 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tests.sse_helpers import parse_sse_data
 from utils.exceptions import InvalidFileError, RateLimitError, ServiceUnavailableError
 from utils.logger import _LOG_FORMAT, get_logger
 from utils.sanitizer import sanitize_input
 
 # ---------------------------------------------------------------------------
 # AC1 + AC2 — /api/generate rate-limit and service-unavailable handling
+# SSE streaming: runtime errors surface as SSE error events (HTTP 200), not
+# HTTP 5xx codes.  Only pre-stream validation errors (400/422/429) use HTTP
+# error codes.
 # ---------------------------------------------------------------------------
 
 
 def test_generate_rate_limit_returns_503(client):
-    """AC1: Claude rate limit → HTTP 503 with RATE_LIMIT_EXCEEDED code."""
+    """AC1: Claude rate limit → SSE error event with RATE_LIMIT_EXCEEDED code."""
     with patch("main.content_agent.generate_variants", new_callable=AsyncMock) as mock_gen:
         mock_gen.side_effect = RateLimitError(retry_after=60)
         response = client.post("/api/generate", data={"text_input": "Some text"})
 
-    assert response.status_code == 503
-    data = response.json()
-    assert data["success"] is False
-    assert data["error"]["code"] == "RATE_LIMIT_EXCEEDED"
-    assert data["error"]["retryAfter"] == 60
-    assert "60 seconds" in data["error"]["message"]
+    assert response.status_code == 200
+    data = parse_sse_data(response)
+    assert data["type"] == "error"
+    assert data["code"] == "RATE_LIMIT_EXCEEDED"
+    assert data["retry_after"] == 60
+    assert "60 seconds" in data["message"]
 
 
 def test_generate_service_unavailable_returns_503(client):
-    """AC2: Claude API unavailable → HTTP 503 with SERVICE_UNAVAILABLE code."""
+    """AC2: Claude API unavailable → SSE error event with SERVICE_UNAVAILABLE code."""
     with patch("main.content_agent.generate_variants", new_callable=AsyncMock) as mock_gen:
         mock_gen.side_effect = ServiceUnavailableError("Claude API unavailable: connection refused")
         response = client.post("/api/generate", data={"text_input": "Some text"})
 
-    assert response.status_code == 503
-    data = response.json()
-    assert data["success"] is False
-    assert data["error"]["code"] == "SERVICE_UNAVAILABLE"
-    assert len(data["error"]["message"]) > 0
+    assert response.status_code == 200
+    data = parse_sse_data(response)
+    assert data["type"] == "error"
+    assert data["code"] == "SERVICE_UNAVAILABLE"
+    assert len(data["message"]) > 0
 
 
 def test_generate_service_unavailable_no_unhandled_exception(client):
-    """AC2: No unhandled exception propagates — always returns structured response."""
+    """AC2: No unhandled exception propagates — always returns a parseable SSE error event."""
     with patch("main.content_agent.generate_variants", new_callable=AsyncMock) as mock_gen:
         mock_gen.side_effect = ServiceUnavailableError("timeout")
         response = client.post("/api/generate", data={"text_input": "Some text"})
 
-    # Must be a parseable JSON response, not a raw 500 crash
-    assert response.status_code in (503, 500)
-    data = response.json()
-    assert "error" in data or "detail" in data
+    assert response.status_code == 200
+    data = parse_sse_data(response)
+    assert data is not None
+    assert data["type"] == "error"
+    assert "code" in data or "message" in data
 
 
 def test_refine_rate_limit_returns_503(client):
@@ -103,33 +108,33 @@ def test_generate_400_uses_structured_error_format(client):
 
 
 def test_corrupt_pdf_returns_400(client):
-    """AC3: Corrupt PDF file → HTTP 400 with INVALID_FILE code."""
+    """AC3: Corrupt PDF file → SSE error event with INVALID_FILE code."""
     with patch("services.input_processor.PyPDF2.PdfReader", side_effect=Exception("Invalid PDF")):
         response = client.post(
             "/api/generate",
             files={"pdf_file": ("test.pdf", b"not a real pdf", "application/pdf")},
         )
 
-    assert response.status_code == 400
-    data = response.json()
-    assert data["success"] is False
-    assert data["error"]["code"] == "INVALID_FILE"
+    assert response.status_code == 200
+    data = parse_sse_data(response)
+    assert data["type"] == "error"
+    assert data["code"] == "INVALID_FILE"
 
 
 def test_corrupt_pdf_error_message_mentions_pdf(client):
-    """AC3: 400 error message specifically identifies the PDF as the problem."""
+    """AC3: SSE error message specifically identifies the PDF as the problem."""
     with patch("services.input_processor.PyPDF2.PdfReader", side_effect=Exception("bad file")):
         response = client.post(
             "/api/generate",
             files={"pdf_file": ("doc.pdf", b"corrupt", "application/pdf")},
         )
 
-    msg = response.json()["error"]["message"].lower()
+    msg = parse_sse_data(response)["message"].lower()
     assert "pdf" in msg
 
 
 def test_corrupt_pdf_with_valid_text_returns_400_not_500(client):
-    """AC3: Text + corrupt PDF → 400 (PDF-specific), not 500 server error."""
+    """AC3: Text + corrupt PDF → INVALID_FILE SSE error (not a generic crash)."""
     with patch("services.input_processor.PyPDF2.PdfReader", side_effect=Exception("bad file")):
         response = client.post(
             "/api/generate",
@@ -137,8 +142,10 @@ def test_corrupt_pdf_with_valid_text_returns_400_not_500(client):
             files={"pdf_file": ("doc.pdf", b"corrupt", "application/pdf")},
         )
 
-    assert response.status_code == 400
-    assert response.json()["error"]["code"] == "INVALID_FILE"
+    assert response.status_code == 200
+    data = parse_sse_data(response)
+    assert data["type"] == "error"
+    assert data["code"] == "INVALID_FILE"
 
 
 # ---------------------------------------------------------------------------

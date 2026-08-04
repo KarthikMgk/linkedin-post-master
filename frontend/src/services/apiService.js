@@ -107,10 +107,11 @@ const apiService = {
 
   /**
    * Generate LinkedIn post from inputs.
+   * Uses fetch + SSE streaming so the connection stays alive during the
+   * Claude API call, preventing 504 gateway timeouts.
    */
   async generatePost({ text, pdf, images, url }) {
     const formData = new FormData();
-
     if (text) formData.append('text_input', text);
     if (pdf) formData.append('pdf_file', pdf);
     if (images && images.length > 0) {
@@ -118,10 +119,68 @@ const apiService = {
     }
     if (url) formData.append('url_input', url);
 
-    const response = await apiClient.post('/api/generate', formData, {
-      timeout: GENERATION_TIMEOUT_MS,
+    const token = _getToken();
+    const response = await fetch(`${API_BASE_URL}/api/generate`, {
+      method: 'POST',
+      body: formData,
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
-    return response.data;
+
+    // Non-streaming error (4xx/5xx before the stream starts)
+    if (!response.ok) {
+      if (response.status === 401 && window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
+      let message;
+      try {
+        const data = await response.json();
+        message = data?.error?.message || data?.detail || `Request failed with status ${response.status}`;
+      } catch {
+        message = `Request failed with status ${response.status}`;
+      }
+      throw new Error(message);
+    }
+
+    // Read SSE stream, resolve when the 'variants' event arrives
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      // SSE events are separated by double newlines
+      const events = buffer.split('\n\n');
+      buffer = events.pop() ?? '';
+
+      for (const event of events) {
+        const line = event.trim();
+        if (!line.startsWith('data: ')) continue;
+
+        let data;
+        try { data = JSON.parse(line.slice(6)); } catch { continue; }
+
+        if (data.type === 'variants') {
+          if (data.quota_remaining !== undefined && _updateQuota) {
+            _updateQuota(data.quota_remaining, data.quota_limit ?? 10);
+          }
+          return data;
+        }
+
+        if (data.type === 'error') {
+          if (data.status === 401 && window.location.pathname !== '/login') {
+            window.location.href = '/login';
+          }
+          throw new Error(data.message || 'Generation failed');
+        }
+        // heartbeat / done events are ignored
+      }
+    }
+
+    throw new Error('Generation stream ended without receiving variants');
   },
 
   /**

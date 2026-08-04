@@ -9,6 +9,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from tests.sse_helpers import parse_sse_data
+
 # ---------------------------------------------------------------------------
 # POST /api/generate
 # ---------------------------------------------------------------------------
@@ -25,7 +27,7 @@ def test_generate_success_with_text_input(client, mock_variants_result):
         )
 
     assert response.status_code == 200
-    data = response.json()
+    data = parse_sse_data(response)
     assert data["success"] is True
     assert "post" in data
     assert "hashtags" in data
@@ -44,7 +46,7 @@ def test_generate_response_maps_fields_correctly(client, mock_variants_result):
 
         response = client.post("/api/generate", data={"text_input": "Test content"})
 
-    data = response.json()
+    data = parse_sse_data(response)
     assert data["post"] == mock_variants_result[0]["post"]
     assert data["hashtags"] == mock_variants_result[0]["hashtags"]
     assert data["engagement_score"] == mock_variants_result[0]["engagement_score"]
@@ -81,7 +83,7 @@ def test_generate_with_url_input_succeeds(client, mock_variants_result):
         response = client.post("/api/generate", data={"url_input": "https://example.com/article"})
 
     assert response.status_code == 200
-    assert response.json()["success"] is True
+    assert parse_sse_data(response)["success"] is True
 
 
 def test_generate_includes_metadata(client, mock_variants_result):
@@ -91,19 +93,22 @@ def test_generate_includes_metadata(client, mock_variants_result):
 
         response = client.post("/api/generate", data={"text_input": "Test input"})
 
-    data = response.json()
+    data = parse_sse_data(response)
     assert "metadata" in data
     assert "inputs_processed" in data["metadata"]
 
 
 def test_generate_agent_exception_returns_500(client):
-    """Unhandled exception from content_agent → HTTP 500."""
+    """Unhandled exception from content_agent → SSE error event."""
     with patch("main.content_agent.generate_variants", new_callable=AsyncMock) as mock_gen:
         mock_gen.side_effect = Exception("Claude API unexpectedly unavailable")
 
         response = client.post("/api/generate", data={"text_input": "Test input"})
 
-    assert response.status_code == 500
+    # SSE streaming always returns 200; errors surface in the event payload.
+    assert response.status_code == 200
+    data = parse_sse_data(response)
+    assert data["type"] == "error"
 
 
 # ---------------------------------------------------------------------------
@@ -220,82 +225,58 @@ _MOCK_IMAGE = {
 
 
 def test_generate_includes_image_in_each_variant(client, mock_variants_result):
-    """AC1: Each variant in /api/generate response contains an image object."""
-    with (
-        patch("main.content_agent.generate_variants", new_callable=AsyncMock) as mock_gen,
-        patch("main.image_service.generate", new_callable=AsyncMock) as mock_img,
-    ):
+    """AC1: /api/generate returns image: null per variant; images are lazy-loaded by the client."""
+    with patch("main.content_agent.generate_variants", new_callable=AsyncMock) as mock_gen:
         mock_gen.return_value = mock_variants_result
-        mock_img.return_value = _MOCK_IMAGE
-
         response = client.post("/api/generate", data={"text_input": "Test content"})
 
     assert response.status_code == 200
-    data = response.json()
+    data = parse_sse_data(response)
     for variant in data["variants"]:
         assert "image" in variant
-        assert variant["image"]["url"] == _MOCK_IMAGE["url"]
-        assert variant["image"]["alt_text"] == _MOCK_IMAGE["alt_text"]
-        assert variant["image"]["prompt_used"] == _MOCK_IMAGE["prompt_used"]
+        assert variant["image"] is None
 
 
 def test_generate_image_called_for_all_three_variants(client, mock_variants_result):
-    """AC1: image_service.generate() is called once per variant (3 total)."""
+    """Image generation is deferred: image_service is NOT called during /api/generate."""
     with (
         patch("main.content_agent.generate_variants", new_callable=AsyncMock) as mock_gen,
         patch("main.image_service.generate", new_callable=AsyncMock) as mock_img,
     ):
         mock_gen.return_value = mock_variants_result
-        mock_img.return_value = _MOCK_IMAGE
-
         client.post("/api/generate", data={"text_input": "Test content"})
 
-    assert mock_img.call_count == 3
+    assert mock_img.call_count == 0
 
 
 def test_generate_graceful_image_failure_returns_200(client, mock_variants_result):
-    """AC3: If image generation fails for all variants, response is still HTTP 200."""
-    with (
-        patch("main.content_agent.generate_variants", new_callable=AsyncMock) as mock_gen,
-        patch("main.image_service.generate", new_callable=AsyncMock) as mock_img,
-    ):
+    """AC3: /api/generate returns HTTP 200 (SSE) and success:true."""
+    with patch("main.content_agent.generate_variants", new_callable=AsyncMock) as mock_gen:
         mock_gen.return_value = mock_variants_result
-        mock_img.return_value = None  # graceful failure
-
         response = client.post("/api/generate", data={"text_input": "Test content"})
 
     assert response.status_code == 200
-    assert response.json()["success"] is True
+    assert parse_sse_data(response)["success"] is True
 
 
 def test_generate_graceful_failure_sets_image_null(client, mock_variants_result):
-    """AC3: When image=None, each variant has image: null in response."""
-    with (
-        patch("main.content_agent.generate_variants", new_callable=AsyncMock) as mock_gen,
-        patch("main.image_service.generate", new_callable=AsyncMock) as mock_img,
-    ):
+    """AC3: Each variant in the generate SSE payload has image: null."""
+    with patch("main.content_agent.generate_variants", new_callable=AsyncMock) as mock_gen:
         mock_gen.return_value = mock_variants_result
-        mock_img.return_value = None
-
         response = client.post("/api/generate", data={"text_input": "Test content"})
 
-    data = response.json()
+    data = parse_sse_data(response)
     for variant in data["variants"]:
         assert variant["image"] is None
 
 
 def test_generate_graceful_failure_adds_image_suggestion(client, mock_variants_result):
-    """AC3: When image=None, each variant's intelligence gains image_suggestion."""
-    with (
-        patch("main.content_agent.generate_variants", new_callable=AsyncMock) as mock_gen,
-        patch("main.image_service.generate", new_callable=AsyncMock) as mock_img,
-    ):
+    """AC3: Each variant's intelligence includes image_suggestion in the SSE payload."""
+    with patch("main.content_agent.generate_variants", new_callable=AsyncMock) as mock_gen:
         mock_gen.return_value = mock_variants_result
-        mock_img.return_value = None
-
         response = client.post("/api/generate", data={"text_input": "Test content"})
 
-    data = response.json()
+    data = parse_sse_data(response)
     for variant in data["variants"]:
         assert "image_suggestion" in variant["intelligence"]
         assert len(variant["intelligence"]["image_suggestion"]) > 0
@@ -350,17 +331,12 @@ def test_refine_graceful_image_failure_still_returns_200(client, mock_refine_res
 
 def test_generate_variants_include_image_visual_rationale(client, mock_variants_result):
     """AC1/AC2: Each variant's intelligence includes image_visual_rationale."""
-    with (
-        patch("main.content_agent.generate_variants", new_callable=AsyncMock) as mock_gen,
-        patch("main.image_service.generate", new_callable=AsyncMock) as mock_img,
-    ):
+    with patch("main.content_agent.generate_variants", new_callable=AsyncMock) as mock_gen:
         mock_gen.return_value = mock_variants_result
-        mock_img.return_value = None
-
         response = client.post("/api/generate", data={"text_input": "Test content"})
 
     assert response.status_code == 200
-    data = response.json()
+    data = parse_sse_data(response)
     for variant in data["variants"]:
         assert "image_visual_rationale" in variant["intelligence"]
 

@@ -5,6 +5,7 @@ Main application entry point
 
 import asyncio
 import copy
+import json
 import os
 import time
 from typing import Any, Optional
@@ -13,7 +14,7 @@ from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 import redis as redis_lib
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -93,6 +94,18 @@ class RegenerateImageRequest(BaseModel):
     image_description: str
     alt_text: str = ""
     custom_direction: str = ""
+
+
+# ---------------------------------------------------------------------------
+# SSE helper
+# ---------------------------------------------------------------------------
+
+
+def _sse_event(event_type: str, data: Optional[dict] = None) -> str:
+    payload: dict[str, Any] = {"type": event_type}
+    if data:
+        payload.update(data)
+    return f"data: {json.dumps(payload)}\n\n"
 
 
 # ---------------------------------------------------------------------------
@@ -256,102 +269,115 @@ async def generate_post(
 ):
     """
     Generate optimized LinkedIn post from multiple input sources.
-    Requires a valid JWT (issued by /api/auth/google).
+    Returns a Server-Sent Events stream: heartbeat events keep the gateway
+    alive while Claude works, then a single 'variants' event carries the result.
     """
-    start_time = time.monotonic()
-    try:
-        has_text = text_input and text_input.strip()
-        has_url = url_input and url_input.strip()
+    has_text = text_input and text_input.strip()
+    has_url = url_input and url_input.strip()
 
-        if not any([has_text, pdf_file, image_files, has_url]):
-            raise HTTPException(
-                status_code=400,
-                detail="At least one input source required (text, PDF, image, or URL)",
-            )
-
-        processed_inputs = await input_processor.process_inputs(
-            text=text_input,
-            pdf=pdf_file,
-            images=image_files if image_files else None,
-            url=url_input,
+    if not any([has_text, pdf_file, image_files, has_url]):
+        raise HTTPException(
+            status_code=400,
+            detail="At least one input source required (text, PDF, image, or URL)",
         )
 
-        variants = await content_agent.generate_variants(processed_inputs)
-
-        if not variants:
-            raise HTTPException(status_code=500, detail="Content generation returned no variants")
-
-        # Images are generated lazily by the client after variants are returned,
-        # keeping the critical-path response time to just the Claude API call.
-        for variant in variants:
-            variant["image"] = None
-            intel = variant.setdefault("intelligence", {})
-            intel["image_suggestion"] = variant.get(
-                "image_description",
-                "Professional LinkedIn image matching your post's tone and message.",
-            )
-
-        first_variant = variants[0]
-
-        elapsed_ms = int((time.monotonic() - start_time) * 1000)
-        logger.info(
-            "POST /api/generate - user: %s, inputs: %d, time: %dms, score: %s",
-            email,
-            len(processed_inputs),
-            elapsed_ms,
-            first_variant.get("engagement_score", "n/a"),
-        )
-
-        # Increment quota AFTER successful generation (failed calls don't count)
-        quota_remaining = _DAILY_LIMIT_DEFAULT
+    async def event_generator():
+        start_time = time.monotonic()
         try:
-            quota_remaining = quota_service.check_and_increment(email)
-        except (redis_lib.RedisError, ValueError) as e:
-            logger.warning("Quota increment failed post-generation: %s", str(e))
+            yield _sse_event("heartbeat")
 
-        response_data = {
-            "success": True,
-            "post": first_variant.get("post", ""),
-            "hashtags": first_variant.get("hashtags", []),
-            "engagement_score": first_variant.get("engagement_score", 0),
-            "hook_strength": first_variant.get("hook_strength", ""),
-            "suggestions": first_variant.get("suggestions", []),
-            "cta": first_variant.get("cta", ""),
-            "image_alt_text": first_variant.get("image_alt_text", ""),
-            "variants": variants,
-            "metadata": {
-                "inputs_processed": len(processed_inputs),
-                "primary_source": processed_inputs[0]["type"] if processed_inputs else None,
-            },
-        }
-        resp = JSONResponse(content=response_data)
-        resp.headers["X-Quota-Remaining"] = str(quota_remaining)
-        resp.headers["X-Quota-Limit"] = str(_DAILY_LIMIT_DEFAULT)
-        return resp
+            processed_inputs = await input_processor.process_inputs(
+                text=text_input,
+                pdf=pdf_file,
+                images=image_files if image_files else None,
+                url=url_input,
+            )
 
-    except HTTPException:
-        raise
-    except InvalidFileError as e:
-        elapsed_ms = int((time.monotonic() - start_time) * 1000)
-        logger.error("Invalid file in generate request (%dms): %s", elapsed_ms, str(e), exc_info=True)
-        return _error_response(400, "INVALID_FILE", str(e))
-    except RateLimitError as e:
-        elapsed_ms = int((time.monotonic() - start_time) * 1000)
-        logger.error("Rate limit in generate request (%dms): %s", elapsed_ms, str(e), exc_info=True)
-        return _error_response(
-            503,
-            "RATE_LIMIT_EXCEEDED",
-            "AI service rate limit reached. Please try again in 60 seconds.",
-            retry_after=e.retry_after,
-        )
-    except ServiceUnavailableError as e:
-        elapsed_ms = int((time.monotonic() - start_time) * 1000)
-        logger.error("Service unavailable in generate request (%dms): %s", elapsed_ms, str(e), exc_info=True)
-        return _error_response(503, "SERVICE_UNAVAILABLE", str(e))
-    except Exception as e:
-        elapsed_ms = int((time.monotonic() - start_time) * 1000)
-        logger.error("Unhandled error in generate request (%dms): %s", elapsed_ms, str(e), exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}") from e
+            # Run generation concurrently with periodic heartbeats so the
+            # reverse-proxy does not close the idle connection.
+            generation_task = asyncio.create_task(
+                content_agent.generate_variants(processed_inputs)
+            )
+            while not generation_task.done():
+                await asyncio.sleep(5)
+                yield _sse_event("heartbeat")
+
+            variants = await generation_task
+
+            if not variants:
+                yield _sse_event("error", {"message": "Content generation returned no variants"})
+                return
+
+            # Images fetched lazily by the client after this response lands.
+            for variant in variants:
+                variant["image"] = None
+                intel = variant.setdefault("intelligence", {})
+                intel["image_suggestion"] = variant.get(
+                    "image_description",
+                    "Professional LinkedIn image matching your post's tone and message.",
+                )
+
+            first_variant = variants[0]
+            elapsed_ms = int((time.monotonic() - start_time) * 1000)
+            logger.info(
+                "POST /api/generate - user: %s, inputs: %d, time: %dms, score: %s",
+                email,
+                len(processed_inputs),
+                elapsed_ms,
+                first_variant.get("engagement_score", "n/a"),
+            )
+
+            quota_remaining = _DAILY_LIMIT_DEFAULT
+            try:
+                quota_remaining = quota_service.check_and_increment(email)
+            except (redis_lib.RedisError, ValueError) as e:
+                logger.warning("Quota increment failed post-generation: %s", str(e))
+
+            yield _sse_event("variants", {
+                "success": True,
+                "post": first_variant.get("post", ""),
+                "hashtags": first_variant.get("hashtags", []),
+                "engagement_score": first_variant.get("engagement_score", 0),
+                "hook_strength": first_variant.get("hook_strength", ""),
+                "suggestions": first_variant.get("suggestions", []),
+                "cta": first_variant.get("cta", ""),
+                "image_alt_text": first_variant.get("image_alt_text", ""),
+                "variants": variants,
+                "metadata": {
+                    "inputs_processed": len(processed_inputs),
+                    "primary_source": processed_inputs[0]["type"] if processed_inputs else None,
+                },
+                "quota_remaining": quota_remaining,
+                "quota_limit": _DAILY_LIMIT_DEFAULT,
+            })
+            yield _sse_event("done")
+
+        except InvalidFileError as e:
+            elapsed_ms = int((time.monotonic() - start_time) * 1000)
+            logger.error("Invalid file in generate request (%dms): %s", elapsed_ms, str(e), exc_info=True)
+            yield _sse_event("error", {"code": "INVALID_FILE", "message": str(e)})
+        except RateLimitError as e:
+            elapsed_ms = int((time.monotonic() - start_time) * 1000)
+            logger.error("Rate limit in generate request (%dms): %s", elapsed_ms, str(e), exc_info=True)
+            yield _sse_event("error", {
+                "code": "RATE_LIMIT_EXCEEDED",
+                "message": "AI service rate limit reached. Please try again in 60 seconds.",
+                "retry_after": e.retry_after,
+            })
+        except ServiceUnavailableError as e:
+            elapsed_ms = int((time.monotonic() - start_time) * 1000)
+            logger.error("Service unavailable in generate request (%dms): %s", elapsed_ms, str(e), exc_info=True)
+            yield _sse_event("error", {"code": "SERVICE_UNAVAILABLE", "message": str(e)})
+        except Exception as e:
+            elapsed_ms = int((time.monotonic() - start_time) * 1000)
+            logger.error("Unhandled error in generate request (%dms): %s", elapsed_ms, str(e), exc_info=True)
+            yield _sse_event("error", {"message": f"Generation failed: {str(e)}"})
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.post("/api/refine")
