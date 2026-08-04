@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from agents.content_agent import ContentGenerationAgent, DEFAULT_INTELLIGENCE
+from tests.sse_helpers import parse_sse_data
 
 
 # ---------------------------------------------------------------------------
@@ -26,7 +27,7 @@ def test_generate_variants_include_intelligence(client, mock_variants_result):
         response = client.post("/api/generate", data={"text_input": "Test content"})
 
     assert response.status_code == 200
-    variants = response.json()["variants"]
+    variants = parse_sse_data(response)["variants"]
     for variant in variants:
         assert "intelligence" in variant, f"variant {variant['id']} missing intelligence"
 
@@ -37,7 +38,7 @@ def test_generate_intelligence_has_all_dimensions(client, mock_variants_result):
         mock_gen.return_value = mock_variants_result
         response = client.post("/api/generate", data={"text_input": "Test content"})
 
-    variants = response.json()["variants"]
+    variants = parse_sse_data(response)["variants"]
     for variant in variants:
         intel = variant["intelligence"]
         assert "hook_strength" in intel
@@ -51,7 +52,7 @@ def test_generate_intelligence_hook_strength_has_rating_and_reason(client, mock_
         mock_gen.return_value = mock_variants_result
         response = client.post("/api/generate", data={"text_input": "Test"})
 
-    intel = response.json()["variants"][0]["intelligence"]
+    intel = parse_sse_data(response)["variants"][0]["intelligence"]
     assert "rating" in intel["hook_strength"]
     assert "reason" in intel["hook_strength"]
     assert intel["hook_strength"]["rating"] in {"Weak", "Moderate", "Strong", "Exceptional"}
@@ -62,7 +63,7 @@ def test_generate_intelligence_cta_clarity_has_status_and_suggestion(client, moc
         mock_gen.return_value = mock_variants_result
         response = client.post("/api/generate", data={"text_input": "Test"})
 
-    intel = response.json()["variants"][0]["intelligence"]
+    intel = parse_sse_data(response)["variants"][0]["intelligence"]
     assert "status" in intel["cta_clarity"]
     assert "suggestion" in intel["cta_clarity"]
     assert intel["cta_clarity"]["status"] in {"clear", "consider", "missing"}
@@ -73,7 +74,7 @@ def test_generate_intelligence_posting_time_has_time_and_reason(client, mock_var
         mock_gen.return_value = mock_variants_result
         response = client.post("/api/generate", data={"text_input": "Test"})
 
-    intel = response.json()["variants"][0]["intelligence"]
+    intel = parse_sse_data(response)["variants"][0]["intelligence"]
     assert "time" in intel["optimal_posting_time"]
     assert "reason" in intel["optimal_posting_time"]
 
@@ -83,7 +84,7 @@ def test_generate_intelligence_length_assessment_has_status_and_char_count(clien
         mock_gen.return_value = mock_variants_result
         response = client.post("/api/generate", data={"text_input": "Test"})
 
-    intel = response.json()["variants"][0]["intelligence"]
+    intel = parse_sse_data(response)["variants"][0]["intelligence"]
     assert "status" in intel["length_assessment"]
     assert "char_count" in intel["length_assessment"]
     assert intel["length_assessment"]["status"] in {"too_short", "optimal", "too_long"}
@@ -99,7 +100,7 @@ def test_generate_root_hook_strength_still_present(client, mock_variants_result)
         mock_gen.return_value = mock_variants_result
         response = client.post("/api/generate", data={"text_input": "Test"})
 
-    for variant in response.json()["variants"]:
+    for variant in parse_sse_data(response)["variants"]:
         assert "hook_strength" in variant
         assert isinstance(variant["hook_strength"], str)
 
@@ -109,7 +110,7 @@ def test_generate_root_suggestions_still_present(client, mock_variants_result):
         mock_gen.return_value = mock_variants_result
         response = client.post("/api/generate", data={"text_input": "Test"})
 
-    for variant in response.json()["variants"]:
+    for variant in parse_sse_data(response)["variants"]:
         assert "suggestions" in variant
         assert isinstance(variant["suggestions"], list)
 
@@ -173,7 +174,7 @@ def test_refine_falls_back_to_default_intelligence_when_missing(client):
 # ---------------------------------------------------------------------------
 
 def test_generate_char_count_is_present_in_response(client):
-    """char_count from intelligence is passed through in the generate response."""
+    """char_count from intelligence is passed through in the generate SSE payload."""
     post_text = "A" * 500
     variants_with_correct_char_count = [
         {
@@ -200,7 +201,7 @@ def test_generate_char_count_is_present_in_response(client):
         mock_gen.return_value = variants_with_correct_char_count
         response = client.post("/api/generate", data={"text_input": "Test"})
 
-    for variant in response.json()["variants"]:
+    for variant in parse_sse_data(response)["variants"]:
         assert variant["intelligence"]["length_assessment"]["char_count"] == 500
 
 

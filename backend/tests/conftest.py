@@ -139,6 +139,15 @@ MOCK_REFINE_RESULT = {
 }
 
 
+from tests.sse_helpers import parse_sse_data
+
+
+@pytest.fixture
+def sse_data():
+    """Fixture that returns the SSE parse helper as a callable."""
+    return parse_sse_data
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
